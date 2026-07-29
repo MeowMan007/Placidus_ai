@@ -261,4 +261,8 @@ function builtinInterpretation(chart, query, rag) {
 🔮 **Guidance:** Embody your Ascendant ruler's sign and house qualities daily to express your authentic self with clarity.`;
 }
 
-app.listen(PORT, () => console.log(`Placidus AI → http://localhost:${PORT}`));
+module.exports = app;
+
+if (require.main === module) {
+  app.listen(PORT, () => console.log(`Placidus AI → http://localhost:${PORT}`));
+}

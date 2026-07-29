@@ -1,7 +1,20 @@
 const fs   = require('fs');
 const path = require('path');
 
-const PDF_TEXT_PATH = path.join(__dirname, '../../pdf_text.txt');
+function resolvePdfTextPath() {
+  const candidates = [
+    path.join(__dirname, '../pdf_text.txt'),
+    path.join(process.cwd(), 'pdf_text.txt'),
+    path.join(__dirname, 'pdf_text.txt'),
+    path.join(__dirname, '../../pdf_text.txt')
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  return candidates[0];
+}
+
+const PDF_TEXT_PATH = resolvePdfTextPath();
 
 let bookChunks = [];
 let initialized = false;

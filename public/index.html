@@ -37,26 +37,26 @@
         <form id="chart-form" class="hero-form">
           <div class="input-group">
             <label for="citySearch">📍 Birth City / Location</label>
-            <input type="text" id="citySearch" placeholder="Type city name (e.g. New York, London, Delhi, Tokyo)..." value="Delhi, India" autocomplete="off" required>
+            <input type="text" id="citySearch" placeholder="Search birth city (e.g. London, New York, Tokyo, Delhi)..." value="" autocomplete="off" required>
             <div id="citySuggestions" class="city-suggestions-dropdown"></div>
-            <input type="hidden" id="latitude" value="28.6139">
-            <input type="hidden" id="longitude" value="77.2090">
+            <input type="hidden" id="latitude" value="">
+            <input type="hidden" id="longitude" value="">
           </div>
 
           <div class="form-row-2">
             <div class="input-group">
               <label for="birthDate">📅 Date of Birth</label>
-              <input type="date" id="birthDate" value="2002-10-07" required>
+              <input type="date" id="birthDate" value="" required>
             </div>
 
             <div class="input-group">
               <label for="birthTime">⏰ Time of Birth</label>
-              <input type="time" id="birthTime" value="18:28" required>
+              <input type="time" id="birthTime" value="" required>
             </div>
           </div>
 
           <div class="input-group">
-            <label for="timezoneOffset">🌐 Timezone (UTC Offset)</label>
+            <label for="timezoneOffset">🌐 Timezone (Auto-Estimated from Location)</label>
             <select id="timezoneOffset">
               <option value="-12">UTC-12:00</option>
               <option value="-11">UTC-11:00</option>
@@ -78,7 +78,7 @@
               <option value="4">UTC+04:00 (Gulf)</option>
               <option value="4.5">UTC+04:30 (Afghanistan)</option>
               <option value="5">UTC+05:00 (Pakistan)</option>
-              <option value="5.5" selected>UTC+05:30 (India IST)</option>
+              <option value="5.5">UTC+05:30 (India IST)</option>
               <option value="5.75">UTC+05:45 (Nepal)</option>
               <option value="6">UTC+06:00 (Bangladesh)</option>
               <option value="6.5">UTC+06:30 (Myanmar)</option>

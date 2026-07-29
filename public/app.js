@@ -80,11 +80,31 @@ function renderCityDropdown(items) {
       document.getElementById('citySearch').value = i.fullName||i.city;
       document.getElementById('latitude').value = i.lat;
       document.getElementById('longitude').value = i.lon;
+      autoEstimateTimezone(i.lon);
       dd.style.display = 'none';
     };
     dd.appendChild(d);
   });
   dd.style.display = 'block';
+}
+
+function autoEstimateTimezone(lon) {
+  if (lon === undefined || lon === null || lon === '' || isNaN(lon)) return;
+  const rawOffset = Math.round(parseFloat(lon) / 15 * 2) / 2;
+  const select = document.getElementById('timezoneOffset');
+  if (!select) return;
+
+  let closestOpt = select.options[0];
+  let minDiff = 999;
+  for (let idx = 0; idx < select.options.length; idx++) {
+    const optVal = parseFloat(select.options[idx].value);
+    const diff = Math.abs(optVal - rawOffset);
+    if (diff < minDiff) {
+      minDiff = diff;
+      closestOpt = select.options[idx];
+    }
+  }
+  if (closestOpt) select.value = closestOpt.value;
 }
 
 // ── Chart Calculation ────────────────────────────────────────────────────────
