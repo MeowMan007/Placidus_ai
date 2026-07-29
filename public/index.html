@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Placidus AI - Birth Chart & Astrological Counselor</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <header>
+    <nav class="navbar">
+      <div class="logo">
+        <span class="logo-icon">✨</span>
+        <span>PLACIDUS AI</span>
+      </div>
+      <ul class="nav-links">
+        <li><a href="#" class="active">Natal Chart</a></li>
+        <li><a href="#dignities">Dignities</a></li>
+        <li><a href="#ai-counselor">AI Astrologer</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero-banner">
+      <h1>Astrology and the Authentic Self</h1>
+      <p>Astro-Seek style birth chart calculator & AI Astrologer trained on Demetra George's authentic self framework</p>
+    </section>
+
+    <!-- Birth Chart Inputs -->
+    <section class="glass-card">
+      <form id="chart-form" class="form-grid">
+        <div class="input-group">
+          <label for="birthDate">Date of Birth</label>
+          <input type="date" id="birthDate" value="2002-10-07" required>
+        </div>
+        <div class="input-group">
+          <label for="birthTime">Time of Birth</label>
+          <input type="time" id="birthTime" value="18:28" required>
+        </div>
+        <div class="input-group">
+          <label for="latitude">Latitude (Decimal)</label>
+          <input type="number" step="any" id="latitude" placeholder="e.g. 28.6139" value="28.61">
+        </div>
+        <div class="input-group">
+          <label for="longitude">Longitude (Decimal)</label>
+          <input type="number" step="any" id="longitude" placeholder="e.g. 77.2090" value="77.20">
+        </div>
+        <button type="submit" class="btn-primary">
+          <span>🔮</span> Calculate Chart
+        </button>
+      </form>
+    </section>
+
+    <div class="layout-grid">
+      <!-- SVG Wheel Renderer -->
+      <section class="glass-card chart-section">
+        <div class="svg-wheel-container">
+          <svg id="chart-wheel-svg" viewBox="0 0 600 600">
+            <!-- Rendered dynamically by app.js -->
+          </svg>
+        </div>
+      </section>
+
+      <!-- Planetary Positions & Aspect Matrix -->
+      <section class="glass-card">
+        <div class="info-tabs">
+          <button class="tab-btn active" onclick="switchTab('planets')">Planetary Positions</button>
+          <button class="tab-btn" onclick="switchTab('houses')">House Cusps</button>
+          <button class="tab-btn" onclick="switchTab('aspects')">Aspect Matrix</button>
+        </div>
+
+        <div id="tab-planets" class="tab-content table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Planet</th>
+                <th>Position</th>
+                <th>House</th>
+                <th>Element</th>
+              </tr>
+            </thead>
+            <tbody id="planets-table-body">
+              <!-- Populated by JS -->
+            </tbody>
+          </table>
+        </div>
+
+        <div id="tab-houses" class="tab-content table-container" style="display: none;">
+          <table>
+            <thead>
+              <tr>
+                <th>House</th>
+                <th>Sign</th>
+                <th>Cusp Degree</th>
+              </tr>
+            </thead>
+            <tbody id="houses-table-body">
+              <!-- Populated by JS -->
+            </tbody>
+          </table>
+        </div>
+
+        <div id="tab-aspects" class="tab-content table-container" style="display: none;">
+          <table>
+            <thead>
+              <tr>
+                <th>Aspect</th>
+                <th>Planets</th>
+                <th>Orb</th>
+              </tr>
+            </thead>
+            <tbody id="aspects-table-body">
+              <!-- Populated by JS -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <!-- AI Astrologer Counselor Section -->
+    <section id="ai-counselor" class="glass-card" style="margin-top: 2rem;">
+      <h2 style="margin-bottom: 1rem; color: var(--accent-gold); display: flex; align-items: center; gap: 0.5rem;">
+        <span>🌙</span> Demetra George AI Astrologer Agent
+      </h2>
+
+      <div class="chat-container">
+        <div id="chat-messages" class="chat-messages">
+          <div class="message assistant">
+            Hello! I am your <strong>Placidus AI Astrologer</strong>, guided by Demetra George's <em>Astrology and the Authentic Self</em> framework.
+            <br><br>
+            Calculate your birth chart above, then ask me about your Ascendant ruler, chart sect, Sun/Moon life purpose, or specific planetary placements.
+          </div>
+        </div>
+
+        <div class="chat-input-row">
+          <input type="text" id="user-prompt" placeholder="Ask about your Ascendant ruler, chart sect, or life purpose...">
+          <button class="btn-primary" onclick="sendChatPrompt()">Ask Agent</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    <p>Placidus AI &copy; 2026 | Inspired by Astro-Seek.com | Demetra George Authentic Self Framework</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
