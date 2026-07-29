@@ -117,18 +117,27 @@ app.post('/api/calculate-chart', (req, res) => {
   }
 });
 
-// ─── AI Astrologer with RAG ──────────────────────────────────────────────────
+// ─── AI Astrologer with RAG & Conversational Memory ──────────────────────────
 app.post('/api/ai-astrologer', async (req, res) => {
   try {
-    const { prompt, chartData, hfApiKey, modelName } = req.body;
-    const model  = modelName || 'Qwen/Qwen2.5-72B-Instruct';
-    const apiKey = hfApiKey  || process.env.HF_API_KEY;
+    const { prompt, chartData, history, hfApiKey, modelName } = req.body;
+    const apiKey = hfApiKey || process.env.HF_API_KEY;
+    const userQ  = prompt || 'Analyze my Ascendant Ruler and North/South Nodes.';
+    const chatHistory = Array.isArray(history) ? history : [];
+
+    // ── Build query context for RAG ──
+    // If prompt is short like "elaborate" or "tell me more", combine with previous message
+    let ragQuery = userQ;
+    if (chatHistory.length > 0 && userQ.length < 20) {
+      const lastUser = [...chatHistory].reverse().find(m => m.role === 'user');
+      if (lastUser) ragQuery = `${lastUser.content} ${userQ}`;
+    }
 
     // ── RAG: Retrieve book excerpts ──
-    const rag = retrieveContext(prompt, chartData, 4);
+    const rag = retrieveContext(ragQuery, chartData, 5);
 
     // ── Build chart context string ──
-    let chartCtx = '';
+    let chartCtx = 'No chart calculated yet.';
     if (chartData && chartData.positions) {
       const p = chartData.positions;
       chartCtx = `
@@ -154,26 +163,49 @@ Key Aspects: ${(chartData.aspects||[]).slice(0,12).map(a=>`${a.p1} ${a.aspect} $
 `;
     }
 
-    // ── Full system prompt with RAG context ──
-    const systemPrompt = `${DEMETRA_GEORGE_KNOWLEDGE}
+    // ── System Prompt for Master Astrologer AI ──
+    const systemPrompt = `You are Placidus AI, an empathetic, master traditional astrologer and counselor trained in Demetra George's "Astrology and the Authentic Self" framework.
 
-RETRIEVED EXCERPTS FROM "ASTROLOGY AND THE AUTHENTIC SELF" BY DEMETRA GEORGE:
+AUTHENTIC SELF FRAMEWORK:
+${DEMETRA_GEORGE_KNOWLEDGE}
+
+${chartCtx}
+
+RETRIEVED EXCERPTS FROM DEMETRA GEORGE'S TEXT:
 ====
 ${rag.formatted}
 ====
 
-${chartCtx}
-
-RESPONSE FORMAT RULES (MANDATORY):
-1. You MUST answer in EXACTLY ~100 words, structured in 3 sections:
-   📜 BOOK INSIGHT: 1-2 sentences quoting or paraphrasing the retrieved book text above.
-   ✨ CHART READING: 2-3 sentences analyzing the client's specific placements.
-   🔮 GUIDANCE: 1 sentence actionable authentic-self recommendation.
-2. Be direct, authoritative, no disclaimers, no fluff.
-3. Reference specific placements (signs, houses, degrees) from the chart data.
+CONVERSATION & RESPONSE INSTRUCTIONS:
+1. You are engaging in a dynamic, ongoing consultation with the client.
+2. If the user asks an initial chart question or clicks a preset suggestion:
+   - Provide a concise (~100-120 words) reading structured in 3 parts:
+     📜 **Book Insight:** Demetra George's core concept from the retrieved text.
+     ✨ **Chart Reading:** Specific analysis of the client's placements (degrees, signs, houses).
+     🔮 **Guidance:** Actionable authentic-self advice.
+3. If the user asks for ELABORATION, follow-up questions, "tell me more", or specific details:
+   - DO NOT repeat previous generic text or force robotic templates.
+   - Deepen your explanation naturally, directly answering their specific question about their placement or chart mechanics (~100-150 words).
+   - Explain planetary dignities, sect conditions, house themes, or aspect geometry in an insightful, conversational tone.
+4. Keep all interpretations grounded strictly in the client's chart data above.
 `;
 
-    const userQ = prompt || 'Analyze my Ascendant Ruler and North/South Nodes.';
+    // Build LLM messages array with history
+    const llmMessages = [{ role: 'system', content: systemPrompt }];
+    
+    // Include last 6 turns of conversation history for context
+    const recentHistory = chatHistory.slice(-6);
+    recentHistory.forEach(m => {
+      if (m.role === 'user' || m.role === 'assistant') {
+        llmMessages.push({ role: m.role, content: m.content });
+      }
+    });
+
+    // Add current user question if not already in history
+    if (!recentHistory.length || recentHistory[recentHistory.length - 1].content !== userQ) {
+      llmMessages.push({ role: 'user', content: userQ });
+    }
+
     let aiText = '';
 
     if (apiKey) {
@@ -187,12 +219,9 @@ RESPONSE FORMAT RULES (MANDATORY):
           },
           body: JSON.stringify({
             model: targetModel,
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: userQ }
-            ],
+            messages: llmMessages,
             max_tokens: 350,
-            temperature: 0.65
+            temperature: 0.7
           })
         });
 
@@ -211,13 +240,12 @@ RESPONSE FORMAT RULES (MANDATORY):
     }
 
     if (!aiText) {
-      console.log('Using RAG Fallback interpretation');
-      aiText = builtinInterpretation(chartData, userQ, rag);
+      aiText = builtinInterpretation(chartData, userQ, rag, chatHistory);
     }
 
     return res.json({ 
       success: true, 
-      modelUsed: aiText && apiKey ? 'meta-llama/Llama-3.3-70B-Instruct-Turbo (via HF Router)' : 'Demetra George RAG Engine', 
+      modelUsed: aiText && apiKey ? 'meta-llama/Llama-3.3-70B-Instruct-Turbo' : 'Demetra George RAG Engine', 
       response: aiText 
     });
   } catch(e) {
@@ -226,8 +254,8 @@ RESPONSE FORMAT RULES (MANDATORY):
   }
 });
 
-// ─── Built-in fallback interpretation ────────────────────────────────────────
-function builtinInterpretation(chart, query, rag) {
+// ─── Built-in RAG Fallback Interpreter ───────────────────────────────────────
+function builtinInterpretation(chart, query, rag, history) {
   if (!chart || !chart.positions) {
     return 'Please calculate your birth chart first to receive a Demetra George analysis.';
   }
@@ -237,10 +265,31 @@ function builtinInterpretation(chart, query, rag) {
   const ascR    = chart.ascendantRuler;
   const rulerP  = p[ascR] || {};
 
-  // Pick a relevant excerpt snippet from retrieved chunks
   const snippet = rag.chunks && rag.chunks[0]
     ? rag.chunks[0].text.slice(0,180).replace(/\s+/g,' ')
     : 'The natal chart is a blueprint of the authentic self.';
+
+  // Check if user is asking for elaboration / follow-up
+  const isElaboration = qLower.includes('elaborate') || qLower.includes('more') || qLower.includes('why') || qLower.includes('explain') || history.length > 2;
+
+  if (isElaboration) {
+    // Determine target placement discussed
+    let target = 'placement';
+    for (const pl of Object.keys(p)) {
+      if (qLower.includes(pl.toLowerCase())) { target = pl; break; }
+    }
+
+    const pos = p[target] || rulerP;
+    return `✨ **Deep Dive & Elaboration:**
+
+Regarding **${pos.name || ascR}** placed in **${pos.formatted || 'your chart'}** (House ${pos.house || '1'}):
+
+Demetra George emphasizes that when a planet sits in House ${pos.house || '1'}, its energy directly permeates your daily experiences. "${snippet}..."
+
+In traditional Hellenistic astrology, ${pos.name || ascR} operating in ${pos.sign || 'this sign'} (${pos.element || 'Fire'} element) requires you to align your intentions with the sign's fundamental triplicity. Because this is a **${chart.sect}**, ${chart.beneficOfSect} acts as a supportive ally while ${chart.maleficOfSect} highlights areas for conscious mastery.
+
+🔮 **Key Takeaway:** Focus on cultivating ${pos.sign || 'your key sign'} qualities through House ${pos.house || '1'} activities to express your authentic potential.`;
+  }
 
   if (qLower.includes('node') || qLower.includes('destiny') || qLower.includes('karma')) {
     const nn = p['North Node'] || {};
@@ -260,34 +309,7 @@ function builtinInterpretation(chart, query, rag) {
 🔮 **Guidance:** Align daily actions with ${ascR}'s house placement to manifest your authentic life direction.`;
   }
 
-  if (qLower.includes('sun') || qLower.includes('moon') || qLower.includes('purpose')) {
-    const sun  = p.Sun  || {};
-    const moon = p.Moon || {};
-    return `📜 **Book Insight:** In Chapter 5, Demetra George identifies the Sun as conscious creative purpose and the Moon as emotional instinct and nurturance needs. "${snippet}..."
-
-✨ **Chart Reading:** Your Sun in ${sun.formatted||'N/A'} (House ${sun.house||'?'}) drives identity through ${sun.sign||''} themes. Your Moon in ${moon.formatted||'N/A'} (House ${moon.house||'?'}) anchors emotional security in ${moon.sign||''} expression.
-
-🔮 **Guidance:** Integrate your Sun's conscious drive with your Moon's instinctive needs to embody authentic wholeness.`;
-  }
-
-  if (qLower.includes('sect') || qLower.includes('benefic') || qLower.includes('malefic')) {
-    return `📜 **Book Insight:** Chapter 2 teaches that a ${chart.sect} uses ${chart.beneficOfSect} as the sect benefic and ${chart.maleficOfSect} as the sect malefic. "${snippet}..."
-
-✨ **Chart Reading:** Your chart is a **${chart.sect}**. ${chart.beneficOfSect} (${p[chart.beneficOfSect]?.formatted||'N/A'}, H${p[chart.beneficOfSect]?.house||'?'}) is your greatest planetary ally, while ${chart.maleficOfSect} (${p[chart.maleficOfSect]?.formatted||'N/A'}, H${p[chart.maleficOfSect]?.house||'?'}) requires careful navigation.
-
-🔮 **Guidance:** Lean into ${chart.beneficOfSect}'s house matters for maximum ease and authentic self-expression.`;
-  }
-
-  if (qLower.includes('aspect') || qLower.includes('pattern') || qLower.includes('geometry')) {
-    const top5 = (chart.aspects||[]).slice(0,5).map(a => `${a.p1} ${a.symbol} ${a.p2} (${a.orb}°)`).join(', ');
-    return `📜 **Book Insight:** Chapter 10 describes how aspect patterns reveal the dynamic relationships between planetary characters — trines flow, squares challenge growth. "${snippet}..."
-
-✨ **Chart Reading:** Your key aspects include: ${top5}. These configurations shape how your planetary energies interact and express through your houses.
-
-🔮 **Guidance:** Work with your trine/sextile gifts while consciously engaging your square/opposition challenges as catalysts for growth.`;
-  }
-
-  // Default comprehensive
+  // Default reading
   return `📜 **Book Insight:** The natal chart is a living blueprint where traditional planetary conditions provide structure and modern archetypes reveal soul potential. "${snippet}..."
 
 ✨ **Chart Reading:** Your ${chart.sect} chart is ruled by ${ascR} (${rulerP.formatted||'N/A'}, H${rulerP.house||'?'}), with Sun in ${p.Sun?.formatted||'N/A'} and Moon in ${p.Moon?.formatted||'N/A'} guiding conscious and emotional life.

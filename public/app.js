@@ -14,6 +14,7 @@
 
 let currentChartData = null;
 let geocodeTimeout   = null;
+let chatHistory      = [];
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -437,25 +438,32 @@ async function sendChatPrompt() {
   if (!txt) return;
   const box = document.getElementById('chat-messages');
 
-  // User bubble
+  // Add to user bubble & history
   const u = document.createElement('div');
   u.className = 'message user'; u.textContent = txt;
   box.appendChild(u); inp.value = '';
 
+  chatHistory.push({ role: 'user', content: txt });
+
   // Assistant thinking
   const a = document.createElement('div');
   a.className = 'message assistant';
-  a.innerHTML = '<em>Searching Demetra George book excerpts…</em>';
+  a.innerHTML = '<em>Consulting Demetra George framework & analyzing chart…</em>';
   box.appendChild(a);
   box.scrollTop = box.scrollHeight;
 
   try {
     const r = await fetch('/api/ai-astrologer', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ prompt:txt, chartData:currentChartData })
+      body: JSON.stringify({ prompt:txt, chartData:currentChartData, history:chatHistory })
     });
     const d = await r.json();
-    a.innerHTML = d.success ? fmtMd(d.response) : 'Error from AI agent.';
+    if (d.success && d.response) {
+      a.innerHTML = fmtMd(d.response);
+      chatHistory.push({ role: 'assistant', content: d.response });
+    } else {
+      a.innerHTML = 'Error from AI agent.';
+    }
   } catch(_) { a.textContent = 'Connection failed.'; }
   box.scrollTop = box.scrollHeight;
 }
