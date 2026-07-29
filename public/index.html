@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Placidus AI - Birth Chart & Astrological Counselor</title>
+  <title>Placidus AI - Emerald & Gold Astrological Counselor</title>
   <link rel="stylesheet" href="style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -28,28 +28,31 @@
   <main>
     <section class="hero-banner">
       <h1>Astrology and the Authentic Self</h1>
-      <p>Astro-Seek style birth chart calculator & AI Astrologer trained on Demetra George's authentic self framework</p>
+      <p>Astro-Seek birth chart engine & Demetra George AI agent with live PDF book RAG retrieval</p>
     </section>
 
-    <!-- Birth Chart Inputs -->
+    <!-- Birth Chart Inputs (City Search + Geocoding) -->
     <section class="glass-card">
       <form id="chart-form" class="form-grid">
+        
+        <div class="input-group" style="grid-column: span 2;">
+          <label for="citySearch">City / Birth Location</label>
+          <input type="text" id="citySearch" placeholder="Type city name (e.g. New York, London, Delhi, Tokyo)..." value="Delhi, India" autocomplete="off" required>
+          <div id="citySuggestions" class="city-suggestions-dropdown"></div>
+          <input type="hidden" id="latitude" value="28.6139">
+          <input type="hidden" id="longitude" value="77.2090">
+        </div>
+
         <div class="input-group">
           <label for="birthDate">Date of Birth</label>
           <input type="date" id="birthDate" value="2002-10-07" required>
         </div>
+
         <div class="input-group">
           <label for="birthTime">Time of Birth</label>
           <input type="time" id="birthTime" value="18:28" required>
         </div>
-        <div class="input-group">
-          <label for="latitude">Latitude (Decimal)</label>
-          <input type="number" step="any" id="latitude" placeholder="e.g. 28.6139" value="28.61">
-        </div>
-        <div class="input-group">
-          <label for="longitude">Longitude (Decimal)</label>
-          <input type="number" step="any" id="longitude" placeholder="e.g. 77.2090" value="77.20">
-        </div>
+
         <button type="submit" class="btn-primary">
           <span>🔮</span> Calculate Chart
         </button>
@@ -122,24 +125,52 @@
       </section>
     </div>
 
-    <!-- AI Astrologer Counselor Section -->
+    <!-- AI Astrologer Counselor & Prompt Suggestions Section -->
     <section id="ai-counselor" class="glass-card" style="margin-top: 2rem;">
-      <h2 style="margin-bottom: 1rem; color: var(--accent-gold); display: flex; align-items: center; gap: 0.5rem;">
+      <h2 style="margin-bottom: 0.5rem; color: var(--accent-gold); display: flex; align-items: center; gap: 0.5rem;">
         <span>🌙</span> Demetra George AI Astrologer Agent
       </h2>
+      <p style="color: var(--text-secondary); margin-bottom: 1.25rem; font-size: 0.95rem;">
+        Powered by live PDF book RAG retrieval from <em>Astrology and the Authentic Self</em>.
+      </p>
+
+      <!-- Interactive Chart Prompt Suggestion Chips -->
+      <div class="suggestions-heading">Popular Chart Inquiries:</div>
+      <div class="prompt-suggestions-grid">
+        <button class="chip-btn" onclick="triggerPresetPrompt('What do my North Node and South Node reveal about my soul destiny and life direction according to Demetra George?')">
+          <span>🐍</span> North & South Nodes Destiny
+        </button>
+        <button class="chip-btn" onclick="triggerPresetPrompt('Who is my Lord of the Chart (Ascendant Ruler) and what is my primary Life Direction?')">
+          <span>👑</span> Lord of the Chart & Ascendant Ruler
+        </button>
+        <button class="chip-btn" onclick="triggerPresetPrompt('How do my Sun and Moon positions integrate to reveal my core Life Purpose and emotional needs?')">
+          <span>☀️</span> Sun & Moon Purpose Integration
+        </button>
+        <button class="chip-btn" onclick="triggerPresetPrompt('Explain my Chart Sect (Diurnal vs Nocturnal) and identify my primary Benefic and Malefic planetary allies.')">
+          <span>⚖️</span> Chart Sect & Benefic/Malefic Allies
+        </button>
+        <button class="chip-btn" onclick="triggerPresetPrompt('What major aspect patterns and essential dignities shape the geometry of my birth chart?')">
+          <span>📐</span> Aspect Patterns & Geometry
+        </button>
+        <button class="chip-btn" onclick="triggerPresetPrompt('What does Demetra George say about my Vocation, Career potential, and material fulfillment in the chart?')">
+          <span>💼</span> Vocation & Career Potential
+        </button>
+      </div>
 
       <div class="chat-container">
         <div id="chat-messages" class="chat-messages">
           <div class="message assistant">
-            Hello! I am your <strong>Placidus AI Astrologer</strong>, guided by Demetra George's <em>Astrology and the Authentic Self</em> framework.
+            Welcome to your <strong>Placidus AI Astrologer</strong>.
             <br><br>
-            Calculate your birth chart above, then ask me about your Ascendant ruler, chart sect, Sun/Moon life purpose, or specific planetary placements.
+            Select your city and calculate your birth chart above, then click any suggestion chip above or ask your own question to retrieve direct insights from Demetra George's <em>Astrology and the Authentic Self</em>.
           </div>
         </div>
 
         <div class="chat-input-row">
-          <input type="text" id="user-prompt" placeholder="Ask about your Ascendant ruler, chart sect, or life purpose...">
-          <button class="btn-primary" onclick="sendChatPrompt()">Ask Agent</button>
+          <input type="text" id="user-prompt" placeholder="Ask about your North Node, Ascendant ruler, or life purpose...">
+          <button class="btn-primary" onclick="sendChatPrompt()">
+            <span>✨</span> Ask Agent
+          </button>
         </div>
       </div>
     </section>
@@ -147,7 +178,7 @@
   </main>
 
   <footer>
-    <p>Placidus AI &copy; 2026 | Inspired by Astro-Seek.com | Demetra George Authentic Self Framework</p>
+    <p>Placidus AI &copy; 2026 | Emerald & Gold Edition | Inspired by Astro-Seek.com | Demetra George Authentic Self Framework</p>
   </footer>
 
   <script src="app.js"></script>
