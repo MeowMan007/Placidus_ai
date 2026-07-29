@@ -27,10 +27,10 @@ const ELEM = { Aries:'Fire',Taurus:'Earth',Gemini:'Air',Cancer:'Water',
                Leo:'Fire',Virgo:'Earth',Libra:'Air',Scorpio:'Water',
                Sagittarius:'Fire',Capricorn:'Earth',Aquarius:'Air',Pisces:'Water' };
 const ELEM_COLORS = {
-  Fire:  { fill:'rgba(220,38,38,0.18)',  text:'#fca5a5', ring:'#ef4444' },
-  Earth: { fill:'rgba(5,150,105,0.18)',   text:'#6ee7b7', ring:'#10b981' },
-  Air:   { fill:'rgba(56,189,248,0.18)',  text:'#93c5fd', ring:'#38bdf8' },
-  Water: { fill:'rgba(124,58,237,0.18)',  text:'#c4b5fd', ring:'#8b5cf6' }
+  Fire:  { fill:'rgba(245,158,11,0.18)',  text:'#fef08a', ring:'#f59e0b' },
+  Earth: { fill:'rgba(16,185,129,0.18)',  text:'#6ee7b7', ring:'#10b981' },
+  Air:   { fill:'rgba(251,191,36,0.15)',  text:'#fde047', ring:'#fbbf24' },
+  Water: { fill:'rgba(52,211,153,0.18)',  text:'#a7f3d0', ring:'#34d399' }
 };
 const PLANET_SYM = {
   Sun:'☉',Moon:'☽',Mercury:'☿',Venus:'♀',Mars:'♂',
@@ -150,6 +150,83 @@ function renderTables(c) {
     tr.innerHTML = `<td style="color:${a.color||'#fbbf24'}">${a.symbol} ${a.aspect}</td><td>${a.p1} – ${a.p2}</td><td>${a.orb}°</td>`;
     ab.appendChild(tr);
   }
+
+  renderAspectMatrix(c);
+  renderDistribution(c);
+}
+
+function renderAspectMatrix(c) {
+  const table = document.getElementById('aspect-matrix-table');
+  if (!table) return;
+  const planets = ['Sun','Moon','Mercury','Venus','Mars','Jupiter','Saturn','Uranus','Neptune','Pluto','North Node'];
+  
+  const aspectMap = {};
+  for (const a of (c.aspects || [])) {
+    aspectMap[`${a.p1}_${a.p2}`] = a;
+    aspectMap[`${a.p2}_${a.p1}`] = a;
+  }
+
+  let html = '<thead><tr><th></th>';
+  planets.forEach(p => {
+    html += `<th class="hdr-cell" title="${p}">${PLANET_SYM[p]||p[0]}</th>`;
+  });
+  html += '</tr></thead><tbody>';
+
+  for (let i = 0; i < planets.length; i++) {
+    const p1 = planets[i];
+    html += `<tr><td class="hdr-cell" title="${p1}">${PLANET_SYM[p1]||p1[0]}</td>`;
+    for (let j = 0; j < planets.length; j++) {
+      const p2 = planets[j];
+      if (j >= i) {
+        html += '<td style="background:rgba(255,255,255,0.02)"></td>';
+      } else {
+        const asp = aspectMap[`${p1}_${p2}`];
+        if (asp) {
+          html += `<td class="asp-cell" title="${asp.p1} ${asp.aspect} ${asp.p2} (${asp.orb}°)" style="color:${asp.color||'#fbbf24'}">${asp.symbol}</td>`;
+        } else {
+          html += '<td class="asp-cell"></td>';
+        }
+      }
+    }
+    html += '</tr>';
+  }
+  html += '</tbody>';
+  table.innerHTML = html;
+}
+
+function renderDistribution(c) {
+  let fire = 0, earth = 0, air = 0, water = 0;
+  let car = 0, fix = 0, mut = 0;
+
+  const MODALITIES = {
+    Aries:'Cardinal', Cancer:'Cardinal', Libra:'Cardinal', Capricorn:'Cardinal',
+    Taurus:'Fixed', Leo:'Fixed', Scorpio:'Fixed', Aquarius:'Fixed',
+    Gemini:'Mutable', Virgo:'Mutable', Sagittarius:'Mutable', Pisces:'Mutable'
+  };
+
+  const keyPlanets = ['Sun','Moon','Mercury','Venus','Mars','Jupiter','Saturn','Uranus','Neptune','Pluto','Ascendant','Midheaven'];
+  for (const name of keyPlanets) {
+    const p = c.positions[name];
+    if (!p || !p.sign) continue;
+    if (p.element === 'Fire') fire++;
+    else if (p.element === 'Earth') earth++;
+    else if (p.element === 'Air') air++;
+    else if (p.element === 'Water') water++;
+
+    const mod = MODALITIES[p.sign];
+    if (mod === 'Cardinal') car++;
+    else if (mod === 'Fixed') fix++;
+    else if (mod === 'Mutable') mut++;
+  }
+
+  const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  setEl('cnt-fire', fire);
+  setEl('cnt-earth', earth);
+  setEl('cnt-air', air);
+  setEl('cnt-water', water);
+  setEl('cnt-car', car);
+  setEl('cnt-fix', fix);
+  setEl('cnt-mut', mut);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -295,8 +372,8 @@ function drawWheel(chart) {
   const badges = [
     { label:'ASC', lon: chart.positions.Ascendant?.longitude, color:'#fbbf24' },
     { label:'DSC', lon: chart.positions.Ascendant ? (chart.positions.Ascendant.longitude+180)%360 : 0, color:'#10b981' },
-    { label:'MC',  lon: chart.positions.Midheaven?.longitude, color:'#38bdf8' },
-    { label:'IC',  lon: chart.positions.Midheaven ? (chart.positions.Midheaven.longitude+180)%360 : 0, color:'#a855f7' },
+    { label:'MC',  lon: chart.positions.Midheaven?.longitude, color:'#fef08a' },
+    { label:'IC',  lon: chart.positions.Midheaven ? (chart.positions.Midheaven.longitude+180)%360 : 0, color:'#34d399' },
   ];
   for (const b of badges) {
     if (b.lon === undefined) continue;
