@@ -23,9 +23,7 @@ const POPULAR_CITIES = [
   { city: "Los Angeles", country: "United States", lat: 34.0522, lon: -118.2437 },
   { city: "Sydney", country: "Australia", lat: -33.8688, lon: 151.2093 },
   { city: "Berlin", country: "Germany", lat: 52.5200, lon: 13.4050 },
-  { city: "Toronto", country: "Canada", lat: 43.6532, lon: -79.3832 },
-  { city: "Cairo", country: "Egypt", lat: 30.0444, lon: 31.2357 },
-  { city: "Rio de Janeiro", country: "Brazil", lat: -22.9068, lon: -43.1729 }
+  { city: "Toronto", country: "Canada", lat: 43.6532, lon: -79.3832 }
 ];
 
 /**
@@ -37,14 +35,12 @@ app.get('/api/geocode', async (req, res) => {
     return res.json({ success: true, results: POPULAR_CITIES.slice(0, 6) });
   }
 
-  // Check local database match first
   const localMatches = POPULAR_CITIES.filter(c => 
     c.city.toLowerCase().includes(query.toLowerCase()) || 
     c.country.toLowerCase().includes(query.toLowerCase())
   );
 
   try {
-    // Query OpenStreetMap Nominatim API for live geocoding
     const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5`, {
       headers: { 'User-Agent': 'PlacidusAI/1.0 (Astrology Chart Engine)' }
     });
@@ -65,7 +61,6 @@ app.get('/api/geocode', async (req, res) => {
     console.warn("Live geocoding warning:", err.message);
   }
 
-  // Return local matches or default
   return res.json({ 
     success: true, 
     results: localMatches.length > 0 ? localMatches : [
@@ -75,7 +70,7 @@ app.get('/api/geocode', async (req, res) => {
 });
 
 /**
- * Endpoint to calculate birth chart positions, dignities, sect, and aspect matrix
+ * Calculate birth chart endpoint
  */
 app.post('/api/calculate-chart', (req, res) => {
   try {
@@ -87,7 +82,7 @@ app.post('/api/calculate-chart', (req, res) => {
     const latNum = parseFloat(latitude) || 28.6139;
     const lonNum = parseFloat(longitude) || 77.2090;
     const chartData = calculateChartData(birthDate, birthTime || "12:00", latNum, lonNum);
-    chartData.cityName = cityName || "Specified Location";
+    chartData.cityName = cityName || "Selected City";
 
     return res.json({ success: true, chartData });
   } catch (err) {
@@ -97,7 +92,7 @@ app.post('/api/calculate-chart', (req, res) => {
 });
 
 /**
- * AI Astrologer Agent Endpoint with PDF Book RAG Retrieval
+ * AI Astrologer Agent Endpoint with PDF Book RAG Retrieval & Structured ~100-Word Output
  */
 app.post('/api/ai-astrologer', async (req, res) => {
   try {
@@ -112,22 +107,15 @@ app.post('/api/ai-astrologer', async (req, res) => {
     let chartContext = "";
     if (chartData) {
       chartContext = `
-NATAL CHART INFORMATION:
-- Location: ${chartData.cityName || "Selected City"} (${chartData.birthInfo.latitude}°, ${chartData.birthInfo.longitude}°)
-- Date/Time: ${chartData.birthInfo.date} ${chartData.birthInfo.time}
-- Chart Sect: ${chartData.sect}
-- Lord of the Chart (Ascendant Ruler): ${chartData.ascendantRuler}
+CLIENT NATAL CHART:
+- City: ${chartData.cityName || "Selected City"}
+- Sect: ${chartData.sect}
+- Ascendant Ruler: ${chartData.ascendantRuler}
 - Ascendant: ${chartData.positions.Ascendant ? chartData.positions.Ascendant.formatted : "N/A"}
-- Sun: ${chartData.positions.Sun ? chartData.positions.Sun.formatted + " (House " + chartData.positions.Sun.house + ")" : "N/A"}
-- Moon: ${chartData.positions.Moon ? chartData.positions.Moon.formatted + " (House " + chartData.positions.Moon.house + ")" : "N/A"}
-- Mercury: ${chartData.positions.Mercury ? chartData.positions.Mercury.formatted + " (House " + chartData.positions.Mercury.house + ")" : "N/A"}
-- Venus: ${chartData.positions.Venus ? chartData.positions.Venus.formatted + " (House " + chartData.positions.Venus.house + ")" : "N/A"}
-- Mars: ${chartData.positions.Mars ? chartData.positions.Mars.formatted + " (House " + chartData.positions.Mars.house + ")" : "N/A"}
-- Jupiter: ${chartData.positions.Jupiter ? chartData.positions.Jupiter.formatted + " (House " + chartData.positions.Jupiter.house + ")" : "N/A"}
-- Saturn: ${chartData.positions.Saturn ? chartData.positions.Saturn.formatted + " (House " + chartData.positions.Saturn.house + ")" : "N/A"}
-- North Node: ${chartData.positions["North Node"] ? chartData.positions["North Node"].formatted + " (House " + chartData.positions["North Node"].house + ")" : "N/A"}
-- South Node: ${chartData.positions["South Node"] ? chartData.positions["South Node"].formatted + " (House " + chartData.positions["South Node"].house + ")" : "N/A"}
-- Key Aspects: ${chartData.aspects.map(a => `${a.p1} ${a.aspect} ${a.p2} (${a.orb}° orb)`).slice(0, 10).join(', ')}
+- Sun: ${chartData.positions.Sun ? chartData.positions.Sun.formatted + " (H" + chartData.positions.Sun.house + ")" : "N/A"}
+- Moon: ${chartData.positions.Moon ? chartData.positions.Moon.formatted + " (H" + chartData.positions.Moon.house + ")" : "N/A"}
+- North Node: ${chartData.positions["North Node"] ? chartData.positions["North Node"].formatted + " (H" + chartData.positions["North Node"].house + ")" : "N/A"}
+- South Node: ${chartData.positions["South Node"] ? chartData.positions["South Node"].formatted + " (H" + chartData.positions["South Node"].house + ")" : "N/A"}
 `;
     }
 
@@ -135,16 +123,18 @@ NATAL CHART INFORMATION:
 ${DEMETRA_GEORGE_KNOWLEDGE}
 
 RETRIEVED EXCERPTS FROM "ASTROLOGY AND THE AUTHENTIC SELF":
-===========================================================
 ${retrievedPdfExcerpts}
-===========================================================
 
-INSTRUCTIONS FOR AI ASTROLOGER:
-- Synthesize the client's natal chart details using the exact principles and text excerpts from Demetra George provided above.
-- Deliver an unvarnished, direct, rigorous, authentic astrological reading strictly based on traditional planetary conditions and modern archetypes.
+STRICT OUTPUT FORMAT RULES:
+1. RESPONSE MUST BE IN A STRUCTURED ~100-WORD FORMAT.
+2. USE EXACTLY THREE SECTIONS:
+   - 📜 DEMETRA GEORGE RULE: (1-2 sentences on the book principle)
+   - ✨ CHART SYNTHESIS: (1-2 sentences analyzing client's specific placement)
+   - 🔮 SOUL TAKEAWAY: (1 sentence actionable authentic self recommendation)
+3. DO NOT ADD EXTRA FLUFF OR DISCLAIMERS. KEEP TOTAL WORDS AROUND 100 WORDS.
 `;
 
-    const userQuery = prompt || "Provide a comprehensive reading of my North Node, South Node, and Ascendant Ruler based on Demetra George's text.";
+    const userQuery = prompt || "Analyze my North Node, South Node, and Ascendant Ruler based on Demetra George's text.";
 
     let aiResponseText = "";
 
@@ -159,7 +149,7 @@ INSTRUCTIONS FOR AI ASTROLOGER:
           body: JSON.stringify({
             inputs: `<|im_start|>system\n${fullSystemPrompt}<|im_end|>\n<|im_start|>user\n${userQuery}<|im_end|>\n<|im_start|>assistant\n`,
             parameters: {
-              max_new_tokens: 1000,
+              max_new_tokens: 300,
               temperature: 0.7,
               top_p: 0.9,
               return_full_text: false
@@ -181,7 +171,7 @@ INSTRUCTIONS FOR AI ASTROLOGER:
     }
 
     if (!aiResponseText) {
-      aiResponseText = generateDemetraGeorgeInterpretation(chartData, userQuery, retrievedPdfExcerpts);
+      aiResponseText = generateStructured100WordInterpretation(chartData, userQuery, retrievedPdfExcerpts);
     }
 
     return res.json({
@@ -196,42 +186,49 @@ INSTRUCTIONS FOR AI ASTROLOGER:
   }
 });
 
-function generateDemetraGeorgeInterpretation(chartData, query, retrievedExcerpts) {
+function generateStructured100WordInterpretation(chartData, query, retrievedExcerpts) {
   if (!chartData) {
-    return "Welcome to Placidus AI! Select your city, birth date, and time above to generate your natal chart and unlock your Demetra George authentic self analysis.";
+    return "Please calculate your birth chart to unlock your Demetra George structured 100-word analysis.";
   }
 
   const asc = chartData.positions.Ascendant;
-  const sun = chartData.positions.Sun;
-  const moon = chartData.positions.Moon;
   const nn = chartData.positions["North Node"];
   const sn = chartData.positions["South Node"];
   const ascRuler = chartData.ascendantRuler;
   const rulerPos = chartData.positions[ascRuler] || {};
 
-  return `### 🌟 Demetra George Authentic Self Synthesis & RAG Analysis
+  const queryLower = query.toLowerCase();
 
-**1. Chart Sect & Condition:**
-- **Location:** ${chartData.cityName || "Selected City"}
-- **Sect:** Your chart is a **${chartData.sect}**. In Demetra George's methodology, ${chartData.sect.includes("Day") ? "the Sun is the luminary leader above the horizon, empowering Jupiter as your primary benefic ally." : "the Moon is the luminary leader below the horizon, empowering Venus as your primary benefic ally."}
+  if (queryLower.includes("node")) {
+    return `### 📜 Demetra George Rule
+Chapter 8 states that the South Node marks innate past mastery and comfortable habits, while the North Node demands stepping into uncharted growth for soul evolution.
 
-**2. The Ascendant & Lord of the Chart:**
-- **Ascendant:** ${asc ? asc.formatted : "N/A"}
-- **Lord of the Chart (Ascendant Ruler):** **${ascRuler}** in ${rulerPos.formatted || 'N/A'} (House ${rulerPos.house || 'N/A'}).
-- *Life Direction:* Your primary soul motivation is steered by **${ascRuler}** in **${rulerPos.sign || 'N/A'} in House ${rulerPos.house || '1'}**, guiding your physical vital force toward mastering ${rulerPos.element || 'elemental'} self-realization.
+### ✨ Chart Synthesis
+Your South Node in ${sn ? sn.sign + " (House " + sn.house + ")" : "N/A"} represents familiar patterns to release, while your North Node in ${nn ? nn.sign + " (House " + nn.house + ")" : "N/A"} challenges you to embrace your true calling.
 
-**3. Lunar Nodes & Soul Path (North Node & South Node):**
-- **North Node (Destiny Direction):** ${nn ? nn.formatted + " (House " + nn.house + ")" : "N/A"}
-- **South Node (Innate Gifts & Over-Reliance):** ${sn ? sn.formatted + " (House " + sn.house + ")" : "N/A"}
-- *Demetra George Insight:* Chapter 8 highlights that the South Node in ${sn ? sn.sign : 'N/A'} (House ${sn ? sn.house : '1'}) represents innate mastery and comfortable patterns from past conditioning. Your evolutionary growth requires integrating the North Node in ${nn ? nn.sign : 'N/A'} in House ${nn ? nn.house : '1'}—stepping out of habit into conscious purpose.
+### 🔮 Soul Takeaway
+Integrate your South Node talents as a springboard, but focus conscious effort toward your North Node in ${nn ? nn.sign : 'N/A'}.`;
+  }
 
-**4. Sun & Moon Core Integration:**
-- **Sun:** ${sun ? sun.formatted : 'N/A'} (House ${sun ? sun.house : '1'}) - Conscious Creative Purpose.
-- **Moon:** ${moon ? moon.formatted : 'N/A'} (House ${moon ? moon.house : '1'}) - Emotional Nurturance & Instinct.
+  if (queryLower.includes("ruler") || queryLower.includes("ascendant")) {
+    return `### 📜 Demetra George Rule
+Chapter 4 designates the Ascendant Ruler as the 'Lord of the Chart', steering the physical vessel and primary life direction of the authentic self.
 
----
-*Retrieved Book Reference:* 
-> "${retrievedExcerpts ? retrievedExcerpts.substring(0, 320).replace(/\n/g, ' ') : 'Demeta George: The natal chart is constructed to facilitate living out your soul purpose.'}..."`;
+### ✨ Chart Synthesis
+With Ascendant in ${asc ? asc.sign : 'N/A'}, your chart ruler **${ascRuler}** resides in ${rulerPos.sign || 'N/A'} in House ${rulerPos.house || '1'}, directing vital energy toward house ${rulerPos.house || '1'} affairs.
+
+### 🔮 Soul Takeaway
+Align daily choices with ${ascRuler}'s house placement to manifest your natural vitality and purpose.`;
+  }
+
+  return `### 📜 Demetra George Rule
+The natal chart is a living blueprint where traditional planetary conditions establish the structure and modern archetypes reveal soul potential.
+
+### ✨ Chart Synthesis
+Your ${chartData.sect} chart relies on ${chartData.ascendantRuler} as chart ruler, anchored by Sun in ${chartData.positions.Sun ? chartData.positions.Sun.sign : 'N/A'} for conscious direction.
+
+### 🔮 Soul Takeaway
+Embody your Ascendant ruler's qualities daily to express your authentic self with alignment and purpose.`;
 }
 
 app.listen(PORT, () => {
