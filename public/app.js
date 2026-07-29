@@ -1,17 +1,31 @@
 let currentChartData = null;
 let geocodeTimeout = null;
 
+const ZODIAC_SIGNS = [
+  "Aries", "Taurus", "Gemini", "Cancer", 
+  "Leo", "Virgo", "Libra", "Scorpio", 
+  "Sagittarius", "Capricorn", "Aquarius", "Pisces"
+];
+
 const ZODIAC_SYMBOLS = {
   "Aries": "♈", "Taurus": "♉", "Gemini": "♊", "Cancer": "♋",
   "Leo": "♌", "Virgo": "♍", "Libra": "♎", "Scorpio": "♏",
   "Sagittarius": "♐", "Capricorn": "♑", "Aquarius": "♒", "Pisces": "♓"
 };
 
-const ZODIAC_COLORS = [
-  "#ef4444", "#34d399", "#fbbf24", "#38bdf8",
-  "#ef4444", "#34d399", "#fbbf24", "#38bdf8",
-  "#ef4444", "#34d399", "#fbbf24", "#38bdf8"
-];
+// Zodiac Element Colors (Astro-Seek standard theme)
+const ELEMENT_COLORS = {
+  "Fire": { bg: "rgba(220, 38, 38, 0.25)", text: "#fca5a5", stroke: "#ef4444" },
+  "Earth": { bg: "rgba(5, 150, 105, 0.25)", text: "#6ee7b7", stroke: "#10b981" },
+  "Air": { bg: "rgba(2, 132, 199, 0.25)", text: "#93c5fd", stroke: "#38bdf8" },
+  "Water": { bg: "rgba(124, 58, 237, 0.25)", text: "#d8b4fe", stroke: "#a855f7" }
+};
+
+const PLANET_GLYPHS = {
+  "Sun": "☉", "Moon": "☽", "Mercury": "☿", "Venus": "♀", "Mars": "♂",
+  "Jupiter": "♃", "Saturn": "♄", "Uranus": "♅", "Neptune": "♆", "Pluto": "♇",
+  "North Node": "☊", "South Node": "☋", "Ascendant": "ASC", "Midheaven": "MC"
+};
 
 document.addEventListener('DOMContentLoaded', () => {
   const form = document.getElementById('chart-form');
@@ -87,13 +101,13 @@ async function calculateAndRenderChart() {
     if (data.success) {
       currentChartData = data.chartData;
       renderTables(currentChartData);
-      renderWheelSVG(currentChartData);
+      renderAstroSeekWheelSVG(currentChartData);
 
       // Update location headers
       document.getElementById('active-city-badge').textContent = `📍 ${cityName}`;
       document.getElementById('chart-location-subtitle').textContent = `${cityName} (${birthDate} ${birthTime})`;
 
-      // Switch UI to Step 2 (Split Dashboard View)
+      // Switch UI to Step 2
       showStep2();
     }
   } catch (err) {
@@ -156,81 +170,198 @@ function renderTables(chartData) {
   });
 }
 
-function renderWheelSVG(chartData) {
+/**
+ * ASTRO-SEEK STANDARD NATAL CHART WHEEL RENDERER
+ * - Ascendant placed EXACTLY at 9 o'clock (180° horizontal axis)
+ * - Counter-clockwise ecliptic longitude orientation
+ * - Inner hub color-coded aspect chords
+ * - Planet glyph collision avoidance
+ */
+function renderAstroSeekWheelSVG(chartData) {
   const svg = document.getElementById('chart-wheel-svg');
   const cx = 300;
   const cy = 300;
   const outerR = 270;
-  const innerR = 210;
-  const houseR = 110;
-
-  let html = `
-    <!-- Emerald & Gold Outer Rings -->
-    <circle cx="${cx}" cy="${cy}" r="${outerR}" fill="none" stroke="rgba(251, 191, 36, 0.45)" stroke-width="2.5" />
-    <circle cx="${cx}" cy="${cy}" r="${innerR}" fill="none" stroke="rgba(16, 185, 129, 0.4)" stroke-width="2" />
-    <circle cx="${cx}" cy="${cy}" r="${houseR}" fill="rgba(2, 44, 34, 0.85)" stroke="rgba(251, 191, 36, 0.3)" stroke-width="1.5" />
-  `;
+  const zodiacInnerR = 215;
+  const houseRingR = 145;
+  const aspectR = 145;
 
   const ascLon = chartData.positions.Ascendant ? chartData.positions.Ascendant.longitude : 0;
 
-  // Render 12 Zodiac Segments
-  for (let i = 0; i < 12; i++) {
-    const startAngle = (i * 30 - ascLon) * (Math.PI / 180);
-    const endAngle = ((i + 1) * 30 - ascLon) * (Math.PI / 180);
-
-    const x1 = cx + outerR * Math.cos(startAngle);
-    const y1 = cy + outerR * Math.sin(startAngle);
-
-    const xi1 = cx + innerR * Math.cos(startAngle);
-    const yi1 = cy + innerR * Math.sin(startAngle);
-
-    html += `<line x1="${x1}" y1="${y1}" x2="${xi1}" y2="${yi1}" stroke="rgba(251, 191, 36, 0.3)" stroke-width="1" />`;
-
-    const midAngle = (startAngle + endAngle) / 2;
-    const symR = (outerR + innerR) / 2;
-    const symX = cx + symR * Math.cos(midAngle);
-    const symY = cy + symR * Math.sin(midAngle);
-
-    const signName = Object.keys(ZODIAC_SYMBOLS)[i];
-    const symbol = ZODIAC_SYMBOLS[signName];
-    const color = ZODIAC_COLORS[i];
-
-    html += `<text x="${symX}" y="${symY + 6}" fill="${color}" font-size="17" text-anchor="middle" font-weight="bold">${symbol}</text>`;
+  // Polar angle helper: Maps ecliptic longitude to SVG coordinates with ASC at 180° (9 o'clock)
+  function lonToAngle(lon) {
+    let deg = (180 - (lon - ascLon)) % 360;
+    if (deg < 0) deg += 360;
+    return deg;
   }
 
-  // Render House Lines
-  chartData.houses.forEach(h => {
-    const angle = (h.longitude - ascLon) * (Math.PI / 180);
-    const hx = cx + innerR * Math.cos(angle);
-    const hy = cy + innerR * Math.sin(angle);
-    const hx2 = cx + houseR * Math.cos(angle);
-    const hy2 = cy + houseR * Math.sin(angle);
+  function polarToCartesian(r, angleDeg) {
+    const rad = angleDeg * (Math.PI / 180);
+    return {
+      x: cx + r * Math.cos(rad),
+      y: cy - r * Math.sin(rad)
+    };
+  }
 
-    html += `<line x1="${hx}" y1="${hy}" x2="${hx2}" y2="${hy2}" stroke="rgba(16, 185, 129, 0.35)" stroke-dasharray="4,4" />`;
+  let html = `
+    <defs>
+      <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+        <feGaussianBlur stdDeviation="3" result="blur" />
+        <feComposite in="SourceGraphic" in2="blur" operator="over" />
+      </filter>
+    </defs>
+
+    <!-- Outer Rings & Hub Backdrop -->
+    <circle cx="${cx}" cy="${cy}" r="${outerR}" fill="none" stroke="rgba(245, 158, 11, 0.4)" stroke-width="2.5" />
+    <circle cx="${cx}" cy="${cy}" r="${zodiacInnerR}" fill="none" stroke="rgba(16, 185, 129, 0.4)" stroke-width="2" />
+    <circle cx="${cx}" cy="${cy}" r="${houseRingR}" fill="rgba(7, 10, 18, 0.85)" stroke="rgba(245, 158, 11, 0.35)" stroke-width="1.5" />
+  `;
+
+  // 1. RENDER ZODIAC SIGN SECTORS (12 Signs)
+  for (let i = 0; i < 12; i++) {
+    const signStartLon = i * 30;
+    const signEndLon = (i + 1) * 30;
+
+    const aStart = lonToAngle(signStartLon);
+    const aEnd = lonToAngle(signEndLon);
+
+    const pOuterStart = polarToCartesian(outerR, aStart);
+    const pOuterEnd = polarToCartesian(outerR, aEnd);
+    const pInnerStart = polarToCartesian(zodiacInnerR, aStart);
+    const pInnerEnd = polarToCartesian(zodiacInnerR, aEnd);
+
+    const signName = ZODIAC_SIGNS[i];
+    const elemName = getSignElement(signName);
+    const elemStyle = ELEMENT_COLORS[elemName] || ELEMENT_COLORS["Fire"];
+
+    // Sector Arc Path
+    const pathD = [
+      `M ${pOuterStart.x} ${pOuterStart.y}`,
+      `A ${outerR} ${outerR} 0 0 1 ${pOuterEnd.x} ${pOuterEnd.y}`,
+      `L ${pInnerEnd.x} ${pInnerEnd.y}`,
+      `A ${zodiacInnerR} ${zodiacInnerR} 0 0 0 ${pInnerStart.x} ${pInnerStart.y}`,
+      `Z`
+    ].join(' ');
+
+    html += `<path d="${pathD}" fill="${elemStyle.bg}" stroke="rgba(255,255,255,0.08)" stroke-width="1" />`;
+
+    // Sign Boundary Ray
+    html += `<line x1="${pOuterStart.x}" y1="${pOuterStart.y}" x2="${pInnerStart.x}" y2="${pInnerStart.y}" stroke="rgba(245, 158, 11, 0.25)" stroke-width="1" />`;
+
+    // Zodiac Glyph Text Position
+    const midAngle = lonToAngle(signStartLon + 15);
+    const symPos = polarToCartesian((outerR + zodiacInnerR) / 2, midAngle);
+    const symbol = ZODIAC_SYMBOLS[signName];
+
+    html += `<text x="${symPos.x}" y="${symPos.y + 6}" fill="${elemStyle.text}" font-size="18" font-weight="bold" text-anchor="middle">${symbol}</text>`;
+  }
+
+  // 2. RENDER ASPECT CHORDS INSIDE INNER HUB
+  if (chartData.aspects && Array.isArray(chartData.aspects)) {
+    chartData.aspects.forEach(asp => {
+      const p1Obj = chartData.positions[asp.p1];
+      const p2Obj = chartData.positions[asp.p2];
+
+      if (p1Obj && p2Obj && p1Obj.longitude !== undefined && p2Obj.longitude !== undefined) {
+        const a1 = lonToAngle(p1Obj.longitude);
+        const a2 = lonToAngle(p2Obj.longitude);
+
+        const pt1 = polarToCartesian(aspectR, a1);
+        const pt2 = polarToCartesian(aspectR, a2);
+
+        let strokeColor = "rgba(245, 158, 11, 0.4)"; // Conjunction default
+        let strokeDash = "";
+
+        if (asp.aspect === "Trine" || asp.aspect === "Sextile") {
+          strokeColor = "rgba(6, 182, 212, 0.65)"; // Soft aspect Cyan/Teal
+        } else if (asp.aspect === "Square" || asp.aspect === "Opposition") {
+          strokeColor = "rgba(239, 68, 68, 0.65)"; // Hard aspect Crimson Red
+          if (asp.aspect === "Opposition") strokeDash = "stroke-dasharray='4,4'";
+        }
+
+        html += `<line x1="${pt1.x}" y1="${pt1.y}" x2="${pt2.x}" y2="${pt2.y}" stroke="${strokeColor}" stroke-width="1.2" ${strokeDash} />`;
+      }
+    });
+  }
+
+  // 3. RENDER PLACIDUS HOUSE CUSPS & HOUSE NUMBERS
+  chartData.houses.forEach((h, idx) => {
+    const cuspAngle = lonToAngle(h.longitude);
+    const pOuter = polarToCartesian(zodiacInnerR, cuspAngle);
+    const pInner = polarToCartesian(houseRingR, cuspAngle);
+
+    // Cusp Line Ray
+    const isAngleCusp = h.house === 1 || h.house === 4 || h.house === 7 || h.house === 10;
+    const strokeWidth = isAngleCusp ? 2.5 : 1;
+    const strokeColor = isAngleCusp ? "var(--accent-gold)" : "rgba(16, 185, 129, 0.35)";
+
+    html += `<line x1="${pOuter.x}" y1="${pOuter.y}" x2="${pInner.x}" y2="${pInner.y}" stroke="${strokeColor}" stroke-width="${strokeWidth}" />`;
+
+    // House Sector Midpoint Number (1..12)
+    const nextH = chartData.houses[(idx + 1) % 12];
+    let midLon = (h.longitude + nextH.longitude) / 2;
+    if (nextH.longitude < h.longitude) midLon += 180;
+    const midAngle = lonToAngle(midLon % 360);
+
+    const numPos = polarToCartesian(houseRingR - 18, midAngle);
+    html += `<text x="${numPos.x}" y="${numPos.y + 4}" fill="rgba(245, 158, 11, 0.8)" font-size="11" font-weight="bold" text-anchor="middle">${h.house}</text>`;
   });
 
-  // Render Planets
-  const planetR = (innerR + houseR) / 2;
-  Object.values(chartData.positions).forEach(p => {
-    if (!p.longitude) return;
-    const pAngle = (p.longitude - ascLon) * (Math.PI / 180);
-    const px = cx + planetR * Math.cos(pAngle);
-    const py = cy + planetR * Math.sin(pAngle);
+  // 4. RENDER PLANET GLYPHS WITH COLLISION PREVENTION
+  const planetList = Object.values(chartData.positions).filter(p => p.longitude !== undefined && p.name !== "Ascendant" && p.name !== "Midheaven");
+  
+  // Sort planets by longitude
+  planetList.sort((a, b) => a.longitude - b.longitude);
+
+  // Group planets that are close (collision avoidance)
+  const planetRBase = (zodiacInnerR + houseRingR) / 2;
+  
+  planetList.forEach((p, idx) => {
+    const angle = lonToAngle(p.longitude);
+    
+    // Check if close to previous planet
+    let rOffset = 0;
+    if (idx > 0 && Math.abs(p.longitude - planetList[idx - 1].longitude) < 7) {
+      rOffset = (idx % 2 === 0) ? 14 : -14;
+    }
+
+    const glyphPos = polarToCartesian(planetRBase + rOffset, angle);
+    const symbol = PLANET_GLYPHS[p.name] || p.symbol || p.name[0];
 
     html += `
-      <circle cx="${px}" cy="${py}" r="13" fill="#064e3b" stroke="var(--accent-gold)" stroke-width="2" />
-      <text x="${px}" y="${py + 5}" fill="var(--accent-gold-bright)" font-size="12" text-anchor="middle" font-weight="bold">${p.symbol || p.name[0]}</text>
+      <circle cx="${glyphPos.x}" cy="${glyphPos.y}" r="12" fill="#0b1021" stroke="var(--accent-gold)" stroke-width="1.8" filter="url(#glow)" />
+      <text x="${glyphPos.x}" y="${glyphPos.y + 4}" fill="var(--accent-gold-bright)" font-size="12" font-weight="bold" text-anchor="middle">${symbol}</text>
     `;
   });
 
-  // ASC / DSC Axis
+  // 5. ASC - DSC AXIS & MC - IC AXIS HIGHLIGHTS
+  const ascPosLeft = polarToCartesian(outerR + 15, 180); // ASC at 9 o'clock
+  const dscPosRight = polarToCartesian(outerR + 15, 0);   // DSC at 3 o'clock
+
   html += `
-    <line x1="${cx - innerR}" y1="${cy}" x2="${cx + innerR}" y2="${cy}" stroke="var(--accent-gold)" stroke-width="3" />
-    <text x="${cx - innerR + 25}" y="${cy - 8}" fill="var(--accent-gold-bright)" font-size="13" font-weight="bold">ASC</text>
-    <text x="${cx + innerR - 25}" y="${cy - 8}" fill="var(--accent-gold-bright)" font-size="13" font-weight="bold">DSC</text>
+    <!-- ASC-DSC Horizontal Horizon Line -->
+    <line x1="${cx - outerR}" y1="${cy}" x2="${cx + outerR}" y2="${cy}" stroke="var(--accent-gold)" stroke-width="3" />
+    
+    <!-- ASC Badge at 9 o'clock -->
+    <circle cx="${cx - outerR}" cy="${cy}" r="14" fill="var(--accent-yellow)" stroke="#022c22" stroke-width="2" />
+    <text x="${cx - outerR}" y="${cy + 4}" fill="#022c22" font-size="10" font-weight="800" text-anchor="middle">ASC</text>
+
+    <!-- DSC Badge at 3 o'clock -->
+    <circle cx="${cx + outerR}" cy="${cy}" r="14" fill="var(--accent-emerald)" stroke="#022c22" stroke-width="2" />
+    <text x="${cx + outerR}" y="${cy + 4}" fill="#022c22" font-size="10" font-weight="800" text-anchor="middle">DSC</text>
   `;
 
   svg.innerHTML = html;
+}
+
+function getSignElement(sign) {
+  const map = {
+    "Aries": "Fire", "Leo": "Fire", "Sagittarius": "Fire",
+    "Taurus": "Earth", "Virgo": "Earth", "Capricorn": "Earth",
+    "Gemini": "Air", "Libra": "Air", "Aquarius": "Air",
+    "Cancer": "Water", "Scorpio": "Water", "Pisces": "Water"
+  };
+  return map[sign] || "Fire";
 }
 
 function switchTab(tabName) {
@@ -265,7 +396,7 @@ async function sendChatPrompt() {
   // Assistant Thinking Message
   const assistDiv = document.createElement('div');
   assistDiv.className = 'message assistant';
-  assistDiv.innerHTML = `<em>Retrieving Demetra George PDF book excerpts & generating 100-word structured analysis...</em>`;
+  assistDiv.innerHTML = `<em>Searching Demetra George PDF book text & generating structured 100-word analysis...</em>`;
   chatContainer.appendChild(assistDiv);
 
   try {
