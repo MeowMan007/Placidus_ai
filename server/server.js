@@ -164,30 +164,30 @@ Key Aspects: ${(chartData.aspects||[]).slice(0,12).map(a=>`${a.p1} ${a.aspect} $
     }
 
     // ── System Prompt for Master Astrologer AI ──
-    const systemPrompt = `You are Placidus AI, an empathetic, master traditional astrologer and counselor trained in Demetra George's "Astrology and the Authentic Self" framework.
+    const systemPrompt = `You are Placidus AI, an empathetic, master traditional astrologer and natal counselor operating under the Authentic Self astrological framework.
 
-AUTHENTIC SELF FRAMEWORK:
+AUTHENTIC SELF ASTROLOGICAL FRAMEWORK & METHODOLOGY:
 ${DEMETRA_GEORGE_KNOWLEDGE}
 
 ${chartCtx}
 
-RETRIEVED EXCERPTS FROM DEMETRA GEORGE'S TEXT:
+RETRIEVED ANCIENT WISDOM & KNOWLEDGE BASE EXCERPTS:
 ====
 ${rag.formatted}
 ====
 
-CONVERSATION & RESPONSE INSTRUCTIONS:
-1. You are engaging in a dynamic, ongoing consultation with the client.
-2. If the user asks an initial chart question or clicks a preset suggestion:
-   - Provide a concise (~100-120 words) reading structured in 3 parts:
-     📜 **Book Insight:** Demetra George's core concept from the retrieved text.
-     ✨ **Chart Reading:** Specific analysis of the client's placements (degrees, signs, houses).
-     🔮 **Guidance:** Actionable authentic-self advice.
-3. If the user asks for ELABORATION, follow-up questions, "tell me more", or specific details:
-   - DO NOT repeat previous generic text or force robotic templates.
-   - Deepen your explanation naturally, directly answering their specific question about their placement or chart mechanics (~100-150 words).
-   - Explain planetary dignities, sect conditions, house themes, or aspect geometry in an insightful, conversational tone.
-4. Keep all interpretations grounded strictly in the client's chart data above.
+STRICT RESPONSE FORMATTING & STYLE DIRECTIVES:
+1. ANONYMITY & BRANDING: Do NOT cite author names (e.g. "Demetra George") or book titles in your output text. Attribute insights to "Traditional Hellenistic principles", "Classical astrological wisdom", or "The Authentic Self framework".
+2. INITIAL CHART QUESTION OR PRESET CHIP:
+   - Structure your response in EXACTLY 3 clear sections (~100-120 words total):
+     📜 **Astrological Principle:** 1-2 sentences explaining the core traditional rule or concept from the knowledge base.
+     ✨ **Chart Reading:** 2-3 sentences analyzing the client's exact natal positions (degrees, signs, houses, sect).
+     🔮 **Guidance:** 1 sentence actionable advice for authentic self-expression.
+3. ELABORATION, FOLLOW-UP, OR CONTINUING CONVERSATION:
+   - DROP THE RIGID HEADINGS AND FORMAT! Do NOT use 📜/✨/🔮 headings when asked to elaborate or follow up.
+   - Speak naturally, fluidly, and comprehensively (~100-180 words) as an expert astrological counselor.
+   - Deepen your explanation of the previously discussed placement, aspect, or chart mechanics. Explain planetary dignities, sect conditions, triplicity, or house dynamics with nuance and depth using your astrological knowledge and the retrieved excerpts.
+4. Always ground your analysis in the client's actual chart data provided above.
 `;
 
     // Build LLM messages array with history
@@ -245,7 +245,7 @@ CONVERSATION & RESPONSE INSTRUCTIONS:
 
     return res.json({ 
       success: true, 
-      modelUsed: aiText && apiKey ? 'meta-llama/Llama-3.3-70B-Instruct-Turbo' : 'Demetra George RAG Engine', 
+      modelUsed: aiText && apiKey ? 'meta-llama/Llama-3.3-70B-Instruct-Turbo' : 'Authentic Self RAG Engine', 
       response: aiText 
     });
   } catch(e) {
@@ -257,7 +257,7 @@ CONVERSATION & RESPONSE INSTRUCTIONS:
 // ─── Built-in RAG Fallback Interpreter ───────────────────────────────────────
 function builtinInterpretation(chart, query, rag, history) {
   if (!chart || !chart.positions) {
-    return 'Please calculate your birth chart first to receive a Demetra George analysis.';
+    return 'Please calculate your birth chart first to receive an astrological analysis.';
   }
 
   const p       = chart.positions;
@@ -270,7 +270,7 @@ function builtinInterpretation(chart, query, rag, history) {
     : 'The natal chart is a blueprint of the authentic self.';
 
   // Check if user is asking for elaboration / follow-up
-  const isElaboration = qLower.includes('elaborate') || qLower.includes('more') || qLower.includes('why') || qLower.includes('explain') || history.length > 2;
+  const isElaboration = qLower.includes('elaborate') || qLower.includes('more') || qLower.includes('why') || qLower.includes('explain') || history.length >= 2;
 
   if (isElaboration) {
     // Determine target placement discussed
@@ -280,37 +280,33 @@ function builtinInterpretation(chart, query, rag, history) {
     }
 
     const pos = p[target] || rulerP;
-    return `✨ **Deep Dive & Elaboration:**
+    return `Regarding **${pos.name || ascR}** in **${pos.formatted || 'your chart'}** (House ${pos.house || '1'}):
 
-Regarding **${pos.name || ascR}** placed in **${pos.formatted || 'your chart'}** (House ${pos.house || '1'}):
+In traditional Hellenistic astrology, when a planet occupies House ${pos.house || '1'}, its energy directly shapes your physical experience and daily activities. Classical principles teach that operating in ${pos.sign || 'this sign'} (${pos.element || 'Fire'} element) requires aligning your intentions with the sign's triplicity ruler.
 
-Demetra George emphasizes that when a planet sits in House ${pos.house || '1'}, its energy directly permeates your daily experiences. "${snippet}..."
-
-In traditional Hellenistic astrology, ${pos.name || ascR} operating in ${pos.sign || 'this sign'} (${pos.element || 'Fire'} element) requires you to align your intentions with the sign's fundamental triplicity. Because this is a **${chart.sect}**, ${chart.beneficOfSect} acts as a supportive ally while ${chart.maleficOfSect} highlights areas for conscious mastery.
-
-🔮 **Key Takeaway:** Focus on cultivating ${pos.sign || 'your key sign'} qualities through House ${pos.house || '1'} activities to express your authentic potential.`;
+Because your chart is a **${chart.sect}**, ${chart.beneficOfSect} acts as your primary planetary ally for growth, while ${chart.maleficOfSect} highlights areas requiring conscious mastery. Elevating ${pos.name || ascR} in House ${pos.house || '1'} grants you the focus to transform raw potential into authentic self-expression.`;
   }
 
   if (qLower.includes('node') || qLower.includes('destiny') || qLower.includes('karma')) {
     const nn = p['North Node'] || {};
     const sn = p['South Node'] || {};
-    return `📜 **Book Insight:** Demetra George writes in Chapter 8 that the South Node represents innate mastery and comfortable past patterns, while the North Node marks the evolutionary direction the soul must consciously pursue. "${snippet}..."
+    return `📜 **Astrological Principle:** Classical wisdom teaches that the South Node represents innate mastery and familiar patterns, while the North Node marks the evolutionary direction the soul must consciously cultivate.
 
-✨ **Chart Reading:** Your North Node in ${nn.formatted||'N/A'} (House ${nn.house||'?'}) calls you toward growth through ${nn.sign||'N/A'} qualities, while your South Node in ${sn.formatted||'N/A'} (House ${sn.house||'?'}) shows familiar ${sn.sign||''} habits to release.
+✨ **Chart Reading:** Your North Node in ${nn.formatted||'N/A'} (House ${nn.house||'?'}) calls you toward growth through ${nn.sign||'N/A'} qualities, while your South Node in ${sn.formatted||'N/A'} (House ${sn.house||'?'}) shows comfortable ${sn.sign||''} habits to release.
 
 🔮 **Guidance:** Channel your South Node talents as a foundation, but invest daily effort into your North Node house ${nn.house||''} affairs.`;
   }
 
   if (qLower.includes('ascendant') || qLower.includes('ruler') || qLower.includes('lord')) {
-    return `📜 **Book Insight:** Chapter 4 designates the Ascendant Ruler as the "Lord of the Chart," the planet that steers the physical vessel and primary life direction. "${snippet}..."
+    return `📜 **Astrological Principle:** Traditional astrology designates the Ascendant Ruler as the Lord of the Chart, the primary planet steering your life direction and physical vessel.
 
-✨ **Chart Reading:** With your Ascendant in ${p.Ascendant?.formatted||'N/A'}, ${ascR} is your chart ruler, placed in ${rulerP.formatted||'N/A'} (House ${rulerP.house||'?'}). This directs your vital force toward House ${rulerP.house||''} matters in a ${rulerP.element||''} manner.
+✨ **Chart Reading:** With your Ascendant in ${p.Ascendant?.formatted||'N/A'}, ${ascR} is your chart ruler, placed in ${rulerP.formatted||'N/A'} (House ${rulerP.house||'?'}). This directs your vital force toward House ${rulerP.house||''} matters.
 
 🔮 **Guidance:** Align daily actions with ${ascR}'s house placement to manifest your authentic life direction.`;
   }
 
   // Default reading
-  return `📜 **Book Insight:** The natal chart is a living blueprint where traditional planetary conditions provide structure and modern archetypes reveal soul potential. "${snippet}..."
+  return `📜 **Astrological Principle:** The natal chart is a living blueprint where traditional planetary conditions provide structure and modern archetypes reveal soul potential.
 
 ✨ **Chart Reading:** Your ${chart.sect} chart is ruled by ${ascR} (${rulerP.formatted||'N/A'}, H${rulerP.house||'?'}), with Sun in ${p.Sun?.formatted||'N/A'} and Moon in ${p.Moon?.formatted||'N/A'} guiding conscious and emotional life.
 

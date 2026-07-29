@@ -448,7 +448,7 @@ async function sendChatPrompt() {
   // Assistant thinking
   const a = document.createElement('div');
   a.className = 'message assistant';
-  a.innerHTML = '<em>Consulting Demetra George framework & analyzing chart…</em>';
+  a.innerHTML = '<em>Analyzing natal chart geometry & consulting traditional wisdom…</em>';
   box.appendChild(a);
   box.scrollTop = box.scrollHeight;
 
