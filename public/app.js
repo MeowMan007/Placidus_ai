@@ -1,4 +1,5 @@
 let currentChartData = null;
+let geocodeTimeout = null;
 
 const ZODIAC_SYMBOLS = {
   "Aries": "♈", "Taurus": "♉", "Gemini": "♊", "Cancer": "♋",
@@ -6,10 +7,11 @@ const ZODIAC_SYMBOLS = {
   "Sagittarius": "♐", "Capricorn": "♑", "Aquarius": "♒", "Pisces": "♓"
 };
 
+// Emerald & Gold Theme Palette
 const ZODIAC_COLORS = [
-  "#ef4444", "#22c55e", "#3b82f6", "#a855f7",
-  "#ef4444", "#22c55e", "#3b82f6", "#a855f7",
-  "#ef4444", "#22c55e", "#3b82f6", "#a855f7"
+  "#ef4444", "#34d399", "#fbbf24", "#38bdf8",
+  "#ef4444", "#34d399", "#fbbf24", "#38bdf8",
+  "#ef4444", "#34d399", "#fbbf24", "#38bdf8"
 ];
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -19,21 +21,70 @@ document.addEventListener('DOMContentLoaded', () => {
     calculateAndRenderChart();
   });
 
-  // Initial Calculation
+  // City Search Autocomplete Setup
+  const cityInput = document.getElementById('citySearch');
+  cityInput.addEventListener('input', handleCityInput);
+  cityInput.addEventListener('focus', () => handleCityInput({ target: cityInput }));
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#citySearch') && !e.target.closest('#citySuggestions')) {
+      document.getElementById('citySuggestions').style.display = 'none';
+    }
+  });
+
+  // Initial Chart Calculation
   calculateAndRenderChart();
 });
+
+function handleCityInput(e) {
+  const query = e.target.value.trim();
+  clearTimeout(geocodeTimeout);
+
+  geocodeTimeout = setTimeout(async () => {
+    try {
+      const res = await fetch(`/api/geocode?q=${encodeURIComponent(query)}`);
+      const data = await res.json();
+      if (data.success && data.results.length > 0) {
+        renderCitySuggestions(data.results);
+      }
+    } catch (err) {
+      console.warn("City geocode error:", err);
+    }
+  }, 250);
+}
+
+function renderCitySuggestions(results) {
+  const dropdown = document.getElementById('citySuggestions');
+  dropdown.innerHTML = '';
+
+  results.forEach(item => {
+    const div = document.createElement('div');
+    div.className = 'city-suggestion-item';
+    div.innerHTML = `📍 <strong>${item.city}</strong> <small style="color:var(--text-muted);">(${item.fullName || item.country || ''})</small>`;
+    div.addEventListener('click', () => {
+      document.getElementById('citySearch').value = item.fullName || item.city;
+      document.getElementById('latitude').value = item.lat;
+      document.getElementById('longitude').value = item.lon;
+      dropdown.style.display = 'none';
+    });
+    dropdown.appendChild(div);
+  });
+
+  dropdown.style.display = 'block';
+}
 
 async function calculateAndRenderChart() {
   const birthDate = document.getElementById('birthDate').value;
   const birthTime = document.getElementById('birthTime').value;
   const latitude = document.getElementById('latitude').value;
   const longitude = document.getElementById('longitude').value;
+  const cityName = document.getElementById('citySearch').value;
 
   try {
     const response = await fetch('/api/calculate-chart', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ birthDate, birthTime, latitude, longitude })
+      body: JSON.stringify({ birthDate, birthTime, latitude, longitude, cityName })
     });
 
     const data = await response.json();
@@ -55,7 +106,7 @@ function renderTables(chartData) {
     const tr = document.createElement('tr');
     const elemClass = p.element ? `badge-${p.element.toLowerCase()}` : '';
     tr.innerHTML = `
-      <td><strong>${p.symbol || ''} ${p.name}</strong></td>
+      <td><strong style="color:var(--accent-gold);">${p.symbol || ''} ${p.name}</strong></td>
       <td>${p.formatted || ''}</td>
       <td>${p.house || '-'}</td>
       <td><span class="badge ${elemClass}">${p.element || '-'}</span></td>
@@ -69,7 +120,7 @@ function renderTables(chartData) {
   chartData.houses.forEach(h => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>House ${h.house}</td>
+      <td><strong>House ${h.house}</strong></td>
       <td>${h.signSymbol} ${h.sign}</td>
       <td>${h.degree}°</td>
     `;
@@ -82,7 +133,7 @@ function renderTables(chartData) {
   chartData.aspects.forEach(a => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${a.symbol} ${a.aspect}</td>
+      <td><strong style="color:var(--accent-gold-bright);">${a.symbol} ${a.aspect}</strong></td>
       <td>${a.p1} - ${a.p2}</td>
       <td>${a.orb}°</td>
     `;
@@ -99,10 +150,10 @@ function renderWheelSVG(chartData) {
   const houseR = 110;
 
   let html = `
-    <!-- Background Outer Ring -->
-    <circle cx="${cx}" cy="${cy}" r="${outerR}" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="2" />
-    <circle cx="${cx}" cy="${cy}" r="${innerR}" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="1.5" />
-    <circle cx="${cx}" cy="${cy}" r="${houseR}" fill="rgba(15, 23, 42, 0.6)" stroke="rgba(255,255,255,0.1)" stroke-width="1" />
+    <!-- Emerald & Gold Outer Rings -->
+    <circle cx="${cx}" cy="${cy}" r="${outerR}" fill="none" stroke="rgba(251, 191, 36, 0.4)" stroke-width="2.5" />
+    <circle cx="${cx}" cy="${cy}" r="${innerR}" fill="none" stroke="rgba(16, 185, 129, 0.4)" stroke-width="2" />
+    <circle cx="${cx}" cy="${cy}" r="${houseR}" fill="rgba(2, 44, 34, 0.75)" stroke="rgba(251, 191, 36, 0.3)" stroke-width="1.5" />
   `;
 
   const ascLon = chartData.positions.Ascendant ? chartData.positions.Ascendant.longitude : 0;
@@ -114,13 +165,11 @@ function renderWheelSVG(chartData) {
 
     const x1 = cx + outerR * Math.cos(startAngle);
     const y1 = cy + outerR * Math.sin(startAngle);
-    const x2 = cx + outerR * Math.cos(endAngle);
-    const y2 = cy + outerR * Math.sin(endAngle);
 
     const xi1 = cx + innerR * Math.cos(startAngle);
     const yi1 = cy + innerR * Math.sin(startAngle);
 
-    html += `<line x1="${x1}" y1="${y1}" x2="${xi1}" y2="${yi1}" stroke="rgba(255,255,255,0.15)" stroke-width="1" />`;
+    html += `<line x1="${x1}" y1="${y1}" x2="${xi1}" y2="${yi1}" stroke="rgba(251, 191, 36, 0.3)" stroke-width="1" />`;
 
     // Zodiac Symbol Position
     const midAngle = (startAngle + endAngle) / 2;
@@ -132,7 +181,7 @@ function renderWheelSVG(chartData) {
     const symbol = ZODIAC_SYMBOLS[signName];
     const color = ZODIAC_COLORS[i];
 
-    html += `<text x="${symX}" y="${symY + 5}" fill="${color}" font-size="16" text-anchor="middle" font-weight="bold">${symbol}</text>`;
+    html += `<text x="${symX}" y="${symY + 6}" fill="${color}" font-size="17" text-anchor="middle" font-weight="bold">${symbol}</text>`;
   }
 
   // Render House Lines
@@ -143,7 +192,7 @@ function renderWheelSVG(chartData) {
     const hx2 = cx + houseR * Math.cos(angle);
     const hy2 = cy + houseR * Math.sin(angle);
 
-    html += `<line x1="${hx}" y1="${hy}" x2="${hx2}" y2="${hy2}" stroke="rgba(255,255,255,0.2)" stroke-dasharray="3,3" />`;
+    html += `<line x1="${hx}" y1="${hy}" x2="${hx2}" y2="${hy2}" stroke="rgba(16, 185, 129, 0.35)" stroke-dasharray="4,4" />`;
   });
 
   // Render Planets
@@ -155,16 +204,16 @@ function renderWheelSVG(chartData) {
     const py = cy + planetR * Math.sin(pAngle);
 
     html += `
-      <circle cx="${px}" cy="${py}" r="12" fill="#1e293b" stroke="var(--accent-gold)" stroke-width="1.5" />
-      <text x="${px}" y="${py + 4}" fill="#ffffff" font-size="11" text-anchor="middle" font-weight="bold">${p.symbol || p.name[0]}</text>
+      <circle cx="${px}" cy="${py}" r="13" fill="#064e3b" stroke="var(--accent-gold)" stroke-width="2" />
+      <text x="${px}" y="${py + 5}" fill="var(--accent-gold-bright)" font-size="12" text-anchor="middle" font-weight="bold">${p.symbol || p.name[0]}</text>
     `;
   });
 
   // ASC / MC Axis Highlights
   html += `
-    <line x1="${cx - innerR}" y1="${cy}" x2="${cx + innerR}" y2="${cy}" stroke="var(--accent-gold)" stroke-width="2.5" />
-    <text x="${cx - innerR + 25}" y="${cy - 8}" fill="var(--accent-gold)" font-size="12" font-weight="bold">ASC</text>
-    <text x="${cx + innerR - 25}" y="${cy - 8}" fill="var(--accent-gold)" font-size="12" font-weight="bold">DSC</text>
+    <line x1="${cx - innerR}" y1="${cy}" x2="${cx + innerR}" y2="${cy}" stroke="var(--accent-gold)" stroke-width="3" />
+    <text x="${cx - innerR + 25}" y="${cy - 8}" fill="var(--accent-gold-bright)" font-size="13" font-weight="bold">ASC</text>
+    <text x="${cx + innerR - 25}" y="${cy - 8}" fill="var(--accent-gold-bright)" font-size="13" font-weight="bold">DSC</text>
   `;
 
   svg.innerHTML = html;
@@ -176,6 +225,11 @@ function switchTab(tabName) {
 
   event.target.classList.add('active');
   document.getElementById(`tab-${tabName}`).style.display = 'block';
+}
+
+function triggerPresetPrompt(promptText) {
+  document.getElementById('user-prompt').value = promptText;
+  sendChatPrompt();
 }
 
 async function sendChatPrompt() {
@@ -197,7 +251,7 @@ async function sendChatPrompt() {
   // Assistant Thinking Message
   const assistDiv = document.createElement('div');
   assistDiv.className = 'message assistant';
-  assistDiv.innerHTML = `<em>Consulting Demetra George Astrological Framework...</em>`;
+  assistDiv.innerHTML = `<em>Retrieving Demetra George PDF book excerpts & consulting AI Astrologer...</em>`;
   chatContainer.appendChild(assistDiv);
 
   try {
@@ -227,6 +281,7 @@ function formatMarkdown(text) {
   return text
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    .replace(/### (.*?)\n/g, '<h4 style="color:var(--accent-gold); margin: 0.5rem 0;">$1</h4>')
+    .replace(/### (.*?)\n/g, '<h4 style="color:var(--accent-gold); margin: 0.6rem 0;">$1</h4>')
+    .replace(/ blockquote /g, '')
     .replace(/\n/g, '<br>');
 }
