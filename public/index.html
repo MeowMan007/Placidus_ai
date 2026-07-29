@@ -17,164 +17,173 @@
         <span class="logo-icon">✨</span>
         <span>PLACIDUS AI</span>
       </div>
-      <ul class="nav-links">
-        <li><a href="#" class="active">Natal Chart</a></li>
-        <li><a href="#dignities">Dignities</a></li>
-        <li><a href="#ai-counselor">AI Astrologer</a></li>
-      </ul>
+      <div id="header-chart-info" class="header-chart-info" style="display: none;">
+        <span id="active-city-badge">📍 Delhi, India</span>
+        <button class="btn-secondary-sm" onclick="showStep1()">✏️ Edit Details</button>
+      </div>
     </nav>
   </header>
 
   <main>
-    <section class="hero-banner">
-      <h1>Astrology and the Authentic Self</h1>
-      <p>Astro-Seek birth chart engine & Demetra George AI agent with live PDF book RAG retrieval</p>
-    </section>
-
-    <!-- Birth Chart Inputs (City Search + Geocoding) -->
-    <section class="glass-card">
-      <form id="chart-form" class="form-grid">
-        
-        <div class="input-group" style="grid-column: span 2;">
-          <label for="citySearch">City / Birth Location</label>
-          <input type="text" id="citySearch" placeholder="Type city name (e.g. New York, London, Delhi, Tokyo)..." value="Delhi, India" autocomplete="off" required>
-          <div id="citySuggestions" class="city-suggestions-dropdown"></div>
-          <input type="hidden" id="latitude" value="28.6139">
-          <input type="hidden" id="longitude" value="77.2090">
-        </div>
-
-        <div class="input-group">
-          <label for="birthDate">Date of Birth</label>
-          <input type="date" id="birthDate" value="2002-10-07" required>
-        </div>
-
-        <div class="input-group">
-          <label for="birthTime">Time of Birth</label>
-          <input type="time" id="birthTime" value="18:28" required>
-        </div>
-
-        <button type="submit" class="btn-primary">
-          <span>🔮</span> Calculate Chart
-        </button>
-      </form>
-    </section>
-
-    <div class="layout-grid">
-      <!-- SVG Wheel Renderer -->
-      <section class="glass-card chart-section">
-        <div class="svg-wheel-container">
-          <svg id="chart-wheel-svg" viewBox="0 0 600 600">
-            <!-- Rendered dynamically by app.js -->
-          </svg>
-        </div>
-      </section>
-
-      <!-- Planetary Positions & Aspect Matrix -->
-      <section class="glass-card">
-        <div class="info-tabs">
-          <button class="tab-btn active" onclick="switchTab('planets')">Planetary Positions</button>
-          <button class="tab-btn" onclick="switchTab('houses')">House Cusps</button>
-          <button class="tab-btn" onclick="switchTab('aspects')">Aspect Matrix</button>
-        </div>
-
-        <div id="tab-planets" class="tab-content table-container">
-          <table>
-            <thead>
-              <tr>
-                <th>Planet</th>
-                <th>Position</th>
-                <th>House</th>
-                <th>Element</th>
-              </tr>
-            </thead>
-            <tbody id="planets-table-body">
-              <!-- Populated by JS -->
-            </tbody>
-          </table>
-        </div>
-
-        <div id="tab-houses" class="tab-content table-container" style="display: none;">
-          <table>
-            <thead>
-              <tr>
-                <th>House</th>
-                <th>Sign</th>
-                <th>Cusp Degree</th>
-              </tr>
-            </thead>
-            <tbody id="houses-table-body">
-              <!-- Populated by JS -->
-            </tbody>
-          </table>
-        </div>
-
-        <div id="tab-aspects" class="tab-content table-container" style="display: none;">
-          <table>
-            <thead>
-              <tr>
-                <th>Aspect</th>
-                <th>Planets</th>
-                <th>Orb</th>
-              </tr>
-            </thead>
-            <tbody id="aspects-table-body">
-              <!-- Populated by JS -->
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </div>
-
-    <!-- AI Astrologer Counselor & Prompt Suggestions Section -->
-    <section id="ai-counselor" class="glass-card" style="margin-top: 2rem;">
-      <h2 style="margin-bottom: 0.5rem; color: var(--accent-gold); display: flex; align-items: center; gap: 0.5rem;">
-        <span>🌙</span> Demetra George AI Astrologer Agent
-      </h2>
-      <p style="color: var(--text-secondary); margin-bottom: 1.25rem; font-size: 0.95rem;">
-        Powered by live PDF book RAG retrieval from <em>Astrology and the Authentic Self</em>.
-      </p>
-
-      <!-- Interactive Chart Prompt Suggestion Chips -->
-      <div class="suggestions-heading">Popular Chart Inquiries:</div>
-      <div class="prompt-suggestions-grid">
-        <button class="chip-btn" onclick="triggerPresetPrompt('What do my North Node and South Node reveal about my soul destiny and life direction according to Demetra George?')">
-          <span>🐍</span> North & South Nodes Destiny
-        </button>
-        <button class="chip-btn" onclick="triggerPresetPrompt('Who is my Lord of the Chart (Ascendant Ruler) and what is my primary Life Direction?')">
-          <span>👑</span> Lord of the Chart & Ascendant Ruler
-        </button>
-        <button class="chip-btn" onclick="triggerPresetPrompt('How do my Sun and Moon positions integrate to reveal my core Life Purpose and emotional needs?')">
-          <span>☀️</span> Sun & Moon Purpose Integration
-        </button>
-        <button class="chip-btn" onclick="triggerPresetPrompt('Explain my Chart Sect (Diurnal vs Nocturnal) and identify my primary Benefic and Malefic planetary allies.')">
-          <span>⚖️</span> Chart Sect & Benefic/Malefic Allies
-        </button>
-        <button class="chip-btn" onclick="triggerPresetPrompt('What major aspect patterns and essential dignities shape the geometry of my birth chart?')">
-          <span>📐</span> Aspect Patterns & Geometry
-        </button>
-        <button class="chip-btn" onclick="triggerPresetPrompt('What does Demetra George say about my Vocation, Career potential, and material fulfillment in the chart?')">
-          <span>💼</span> Vocation & Career Potential
-        </button>
+    <!-- STEP 1: INITIAL BIRTH DETAILS FORM HERO SCREEN -->
+    <section id="step-1-screen" class="hero-step-container">
+      <div class="hero-content">
+        <div class="sparkle-badge">🌌 Demetra George Authentic Self Framework</div>
+        <h1 class="hero-title">Discover Your Authentic Soul Blueprint</h1>
+        <p class="hero-subtitle">Enter your birth details to generate your Placidus natal chart and consult the AI Astrologer powered by live PDF book RAG retrieval.</p>
       </div>
 
-      <div class="chat-container">
-        <div id="chat-messages" class="chat-messages">
-          <div class="message assistant">
-            Welcome to your <strong>Placidus AI Astrologer</strong>.
-            <br><br>
-            Select your city and calculate your birth chart above, then click any suggestion chip above or ask your own question to retrieve direct insights from Demetra George's <em>Astrology and the Authentic Self</em>.
+      <div class="glass-card hero-form-card">
+        <form id="chart-form" class="hero-form">
+          <div class="input-group">
+            <label for="citySearch">📍 Birth City / Location</label>
+            <input type="text" id="citySearch" placeholder="Type city name (e.g. New York, London, Delhi, Tokyo)..." value="Delhi, India" autocomplete="off" required>
+            <div id="citySuggestions" class="city-suggestions-dropdown"></div>
+            <input type="hidden" id="latitude" value="28.6139">
+            <input type="hidden" id="longitude" value="77.2090">
+          </div>
+
+          <div class="form-row-2">
+            <div class="input-group">
+              <label for="birthDate">📅 Date of Birth</label>
+              <input type="date" id="birthDate" value="2002-10-07" required>
+            </div>
+
+            <div class="input-group">
+              <label for="birthTime">⏰ Time of Birth</label>
+              <input type="time" id="birthTime" value="18:28" required>
+            </div>
+          </div>
+
+          <button type="submit" class="btn-primary hero-btn">
+            <span>🔮</span> Generate Chart & Open AI Agent
+          </button>
+        </form>
+      </div>
+    </section>
+
+
+    <!-- STEP 2: SPLIT WORKSPACE DASHBOARD (LEFT: CHART WHEEL & TABLES, RIGHT: AI AGENT) -->
+    <section id="step-2-screen" class="split-workspace-container" style="display: none;">
+      
+      <!-- LEFT COLUMN: SVG CHART WHEEL & DIGNITY TABLES -->
+      <div class="left-column">
+        <div class="glass-card chart-card">
+          <div class="card-header">
+            <h3><span>✨</span> Natal Chart Wheel (Placidus)</h3>
+            <span id="chart-location-subtitle" class="location-sub">Delhi, India</span>
+          </div>
+          <div class="svg-wheel-container">
+            <svg id="chart-wheel-svg" viewBox="0 0 600 600">
+              <!-- Rendered dynamically by app.js -->
+            </svg>
           </div>
         </div>
 
-        <div class="chat-input-row">
-          <input type="text" id="user-prompt" placeholder="Ask about your North Node, Ascendant ruler, or life purpose...">
-          <button class="btn-primary" onclick="sendChatPrompt()">
-            <span>✨</span> Ask Agent
-          </button>
+        <div class="glass-card tables-card">
+          <div class="info-tabs">
+            <button class="tab-btn active" onclick="switchTab('planets')">Planets</button>
+            <button class="tab-btn" onclick="switchTab('houses')">Houses</button>
+            <button class="tab-btn" onclick="switchTab('aspects')">Aspects</button>
+          </div>
+
+          <div id="tab-planets" class="tab-content table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Planet</th>
+                  <th>Position</th>
+                  <th>House</th>
+                  <th>Element</th>
+                </tr>
+              </thead>
+              <tbody id="planets-table-body"></tbody>
+            </table>
+          </div>
+
+          <div id="tab-houses" class="tab-content table-container" style="display: none;">
+            <table>
+              <thead>
+                <tr>
+                  <th>House</th>
+                  <th>Sign</th>
+                  <th>Degree</th>
+                </tr>
+              </thead>
+              <tbody id="houses-table-body"></tbody>
+            </table>
+          </div>
+
+          <div id="tab-aspects" class="tab-content table-container" style="display: none;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Aspect</th>
+                  <th>Planets</th>
+                  <th>Orb</th>
+                </tr>
+              </thead>
+              <tbody id="aspects-table-body"></tbody>
+            </table>
+          </div>
         </div>
       </div>
-    </section>
 
+      <!-- RIGHT COLUMN: DEMETRA GEORGE AI AGENT & PROMPT SUGGESTIONS -->
+      <div class="right-column">
+        <div class="glass-card agent-card">
+          <div class="agent-header">
+            <h2><span>🌙</span> Demetra George AI Agent</h2>
+            <p>RAG PDF book search • Structured 100-word responses</p>
+          </div>
+
+          <!-- Interactive Suggestion Chips -->
+          <div class="suggestions-section">
+            <div class="suggestions-heading">Chart Quick Suggestions:</div>
+            <div class="prompt-suggestions-grid">
+              <button class="chip-btn" onclick="triggerPresetPrompt('What do my North Node and South Node reveal about my soul destiny and life direction?')">
+                <span>🐍</span> North & South Nodes
+              </button>
+              <button class="chip-btn" onclick="triggerPresetPrompt('Who is my Lord of the Chart (Ascendant Ruler) and what is my primary Life Direction?')">
+                <span>👑</span> Ascendant Ruler
+              </button>
+              <button class="chip-btn" onclick="triggerPresetPrompt('How do my Sun and Moon positions integrate to reveal my core Life Purpose?')">
+                <span>☀️</span> Sun & Moon Purpose
+              </button>
+              <button class="chip-btn" onclick="triggerPresetPrompt('Explain my Chart Sect (Diurnal vs Nocturnal) and identify my primary Benefic and Malefic planetary allies.')">
+                <span>⚖️</span> Sect & Planetary Allies
+              </button>
+              <button class="chip-btn" onclick="triggerPresetPrompt('What major aspect patterns shape the geometry of my birth chart?')">
+                <span>📐</span> Aspect Patterns
+              </button>
+              <button class="chip-btn" onclick="triggerPresetPrompt('What does Demetra George say about my Vocation and Career potential?')">
+                <span>💼</span> Vocation & Career
+              </button>
+            </div>
+          </div>
+
+          <!-- Chat Console -->
+          <div class="chat-container">
+            <div id="chat-messages" class="chat-messages">
+              <div class="message assistant">
+                Welcome to your <strong>Placidus AI Astrologer</strong>.
+                <br><br>
+                Click any suggestion chip above or type your question below to search Demetra George's <em>Astrology and the Authentic Self</em> for a structured ~100-word reading.
+              </div>
+            </div>
+
+            <div class="chat-input-row">
+              <input type="text" id="user-prompt" placeholder="Ask about your North Node, Ascendant ruler, or life purpose...">
+              <button class="btn-primary" onclick="sendChatPrompt()">
+                <span>✨</span> Ask
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </section>
   </main>
 
   <footer>

@@ -7,7 +7,6 @@ const ZODIAC_SYMBOLS = {
   "Sagittarius": "♐", "Capricorn": "♑", "Aquarius": "♒", "Pisces": "♓"
 };
 
-// Emerald & Gold Theme Palette
 const ZODIAC_COLORS = [
   "#ef4444", "#34d399", "#fbbf24", "#38bdf8",
   "#ef4444", "#34d399", "#fbbf24", "#38bdf8",
@@ -21,7 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
     calculateAndRenderChart();
   });
 
-  // City Search Autocomplete Setup
+  // City Autocomplete Handler
   const cityInput = document.getElementById('citySearch');
   cityInput.addEventListener('input', handleCityInput);
   cityInput.addEventListener('focus', () => handleCityInput({ target: cityInput }));
@@ -31,9 +30,6 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById('citySuggestions').style.display = 'none';
     }
   });
-
-  // Initial Chart Calculation
-  calculateAndRenderChart();
 });
 
 function handleCityInput(e) {
@@ -92,10 +88,29 @@ async function calculateAndRenderChart() {
       currentChartData = data.chartData;
       renderTables(currentChartData);
       renderWheelSVG(currentChartData);
+
+      // Update location headers
+      document.getElementById('active-city-badge').textContent = `📍 ${cityName}`;
+      document.getElementById('chart-location-subtitle').textContent = `${cityName} (${birthDate} ${birthTime})`;
+
+      // Switch UI to Step 2 (Split Dashboard View)
+      showStep2();
     }
   } catch (err) {
     console.error("Failed to calculate chart:", err);
   }
+}
+
+function showStep1() {
+  document.getElementById('step-1-screen').style.display = 'flex';
+  document.getElementById('step-2-screen').style.display = 'none';
+  document.getElementById('header-chart-info').style.display = 'none';
+}
+
+function showStep2() {
+  document.getElementById('step-1-screen').style.display = 'none';
+  document.getElementById('step-2-screen').style.display = 'grid';
+  document.getElementById('header-chart-info').style.display = 'flex';
 }
 
 function renderTables(chartData) {
@@ -108,7 +123,7 @@ function renderTables(chartData) {
     tr.innerHTML = `
       <td><strong style="color:var(--accent-gold);">${p.symbol || ''} ${p.name}</strong></td>
       <td>${p.formatted || ''}</td>
-      <td>${p.house || '-'}</td>
+      <td>H${p.house || '-'}</td>
       <td><span class="badge ${elemClass}">${p.element || '-'}</span></td>
     `;
     pBody.appendChild(tr);
@@ -151,9 +166,9 @@ function renderWheelSVG(chartData) {
 
   let html = `
     <!-- Emerald & Gold Outer Rings -->
-    <circle cx="${cx}" cy="${cy}" r="${outerR}" fill="none" stroke="rgba(251, 191, 36, 0.4)" stroke-width="2.5" />
+    <circle cx="${cx}" cy="${cy}" r="${outerR}" fill="none" stroke="rgba(251, 191, 36, 0.45)" stroke-width="2.5" />
     <circle cx="${cx}" cy="${cy}" r="${innerR}" fill="none" stroke="rgba(16, 185, 129, 0.4)" stroke-width="2" />
-    <circle cx="${cx}" cy="${cy}" r="${houseR}" fill="rgba(2, 44, 34, 0.75)" stroke="rgba(251, 191, 36, 0.3)" stroke-width="1.5" />
+    <circle cx="${cx}" cy="${cy}" r="${houseR}" fill="rgba(2, 44, 34, 0.85)" stroke="rgba(251, 191, 36, 0.3)" stroke-width="1.5" />
   `;
 
   const ascLon = chartData.positions.Ascendant ? chartData.positions.Ascendant.longitude : 0;
@@ -171,7 +186,6 @@ function renderWheelSVG(chartData) {
 
     html += `<line x1="${x1}" y1="${y1}" x2="${xi1}" y2="${yi1}" stroke="rgba(251, 191, 36, 0.3)" stroke-width="1" />`;
 
-    // Zodiac Symbol Position
     const midAngle = (startAngle + endAngle) / 2;
     const symR = (outerR + innerR) / 2;
     const symX = cx + symR * Math.cos(midAngle);
@@ -209,7 +223,7 @@ function renderWheelSVG(chartData) {
     `;
   });
 
-  // ASC / MC Axis Highlights
+  // ASC / DSC Axis
   html += `
     <line x1="${cx - innerR}" y1="${cy}" x2="${cx + innerR}" y2="${cy}" stroke="var(--accent-gold)" stroke-width="3" />
     <text x="${cx - innerR + 25}" y="${cy - 8}" fill="var(--accent-gold-bright)" font-size="13" font-weight="bold">ASC</text>
@@ -251,7 +265,7 @@ async function sendChatPrompt() {
   // Assistant Thinking Message
   const assistDiv = document.createElement('div');
   assistDiv.className = 'message assistant';
-  assistDiv.innerHTML = `<em>Retrieving Demetra George PDF book excerpts & consulting AI Astrologer...</em>`;
+  assistDiv.innerHTML = `<em>Retrieving Demetra George PDF book excerpts & generating 100-word structured analysis...</em>`;
   chatContainer.appendChild(assistDiv);
 
   try {
@@ -281,7 +295,6 @@ function formatMarkdown(text) {
   return text
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    .replace(/### (.*?)\n/g, '<h4 style="color:var(--accent-gold); margin: 0.6rem 0;">$1</h4>')
-    .replace(/ blockquote /g, '')
+    .replace(/### (.*?)\n/g, '<h4 style="color:var(--accent-gold); margin: 0.5rem 0;">$1</h4>')
     .replace(/\n/g, '<br>');
 }
