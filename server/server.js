@@ -66,12 +66,13 @@ app.get('/api/geocode', async (req, res) => {
 // ─── Calculate Chart ─────────────────────────────────────────────────────────
 app.post('/api/calculate-chart', (req, res) => {
   try {
-    const { birthDate, birthTime, latitude, longitude, cityName } = req.body;
+    const { birthDate, birthTime, latitude, longitude, cityName, timezoneOffset } = req.body;
     if (!birthDate) return res.status(400).json({ error:'birthDate required' });
 
     const chart = calculateChartData(
       birthDate, birthTime||'12:00',
-      parseFloat(latitude)||28.6139, parseFloat(longitude)||77.2090
+      parseFloat(latitude)||28.6139, parseFloat(longitude)||77.2090,
+      timezoneOffset !== undefined ? parseFloat(timezoneOffset) : undefined
     );
     chart.cityName = cityName || 'Selected City';
     return res.json({ success:true, chartData: chart });

@@ -95,11 +95,12 @@ async function calculateAndRenderChart() {
   const la = document.getElementById('latitude').value;
   const lo = document.getElementById('longitude').value;
   const cn = document.getElementById('citySearch').value;
+  const tz = document.getElementById('timezoneOffset').value;
 
   try {
     const r = await fetch('/api/calculate-chart', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ birthDate:bd, birthTime:bt, latitude:la, longitude:lo, cityName:cn })
+      body: JSON.stringify({ birthDate:bd, birthTime:bt, latitude:la, longitude:lo, cityName:cn, timezoneOffset:tz })
     });
     const d = await r.json();
     if (d.success) {
@@ -107,7 +108,8 @@ async function calculateAndRenderChart() {
       renderTables(currentChartData);
       drawWheel(currentChartData);
       document.getElementById('active-city-badge').textContent = `📍 ${cn}`;
-      document.getElementById('chart-location-subtitle').textContent = `${cn} · ${bd} ${bt}`;
+      const utcInfo = currentChartData.birthInfo?.utcTime ? ` (${currentChartData.birthInfo.utcTime})` : '';
+      document.getElementById('chart-location-subtitle').textContent = `${cn} · ${bd} ${bt}${utcInfo}`;
       showStep2();
     }
   } catch(e) { console.error('Chart error:', e); }
@@ -167,18 +169,18 @@ function drawWheel(chart) {
   const ascLon = chart.positions.Ascendant ? chart.positions.Ascendant.longitude : 0;
 
   // Convert ecliptic longitude → SVG angle (degrees, standard math convention)
-  // ASC at 180° (9 o'clock), signs progress counter-clockwise
-  function lon2a(lon) { return ((180 - (lon - ascLon)) % 360 + 360) % 360; }
+  // ASC at 180° (9 o'clock), signs and houses progress counter-clockwise
+  function lon2a(lon) { return ((180 + (lon - ascLon)) % 360 + 360) % 360; }
   function polar(r, aDeg) {
     const rad = aDeg * Math.PI / 180;
     return { x: CX + r * Math.cos(rad), y: CY - r * Math.sin(rad) };
   }
   function arc(r, a1, a2) {
-    // SVG arc from a1 to a2 (both in math degrees)
+    // SVG arc from a1 to a2 (counter-clockwise sweep in SVG)
     const p1 = polar(r, a1), p2 = polar(r, a2);
-    let sweep = ((a1 - a2) % 360 + 360) % 360;
+    let sweep = ((a2 - a1) % 360 + 360) % 360;
     const large = sweep > 180 ? 1 : 0;
-    return `M${p1.x},${p1.y} A${r},${r} 0 ${large} 1 ${p2.x},${p2.y}`;
+    return `M${p1.x},${p1.y} A${r},${r} 0 ${large} 0 ${p2.x},${p2.y}`;
   }
 
   let s = '';
@@ -199,9 +201,9 @@ function drawWheel(chart) {
     // Filled sector
     const pO1 = polar(R_OUT, a1), pO2 = polar(R_OUT, a2);
     const pI1 = polar(R_SIGN, a1), pI2 = polar(R_SIGN, a2);
-    let sweep = ((a1 - a2) % 360 + 360) % 360;
+    let sweep = ((a2 - a1) % 360 + 360) % 360;
     const lg = sweep > 180 ? 1 : 0;
-    s += `<path d="M${pO1.x},${pO1.y} A${R_OUT},${R_OUT} 0 ${lg} 1 ${pO2.x},${pO2.y} L${pI2.x},${pI2.y} A${R_SIGN},${R_SIGN} 0 ${lg} 0 ${pI1.x},${pI1.y} Z" fill="${col.fill}" stroke="rgba(255,255,255,0.06)" stroke-width="0.5"/>`;
+    s += `<path d="M${pO1.x},${pO1.y} A${R_OUT},${R_OUT} 0 ${lg} 0 ${pO2.x},${pO2.y} L${pI2.x},${pI2.y} A${R_SIGN},${R_SIGN} 0 ${lg} 1 ${pI1.x},${pI1.y} Z" fill="${col.fill}" stroke="rgba(255,255,255,0.06)" stroke-width="0.5"/>`;
 
     // Division line
     s += `<line x1="${pO1.x}" y1="${pO1.y}" x2="${pI1.x}" y2="${pI1.y}" stroke="rgba(245,158,11,0.3)" stroke-width="1"/>`;
