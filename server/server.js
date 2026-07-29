@@ -64,6 +64,40 @@ app.get('/api/geocode', async (req, res) => {
   ]});
 });
 
+// ─── Timezone Lookup ────────────────────────────────────────────────────────
+app.get('/api/timezone', async (req, res) => {
+  const { lat, lon } = req.query;
+  const latitude = parseFloat(lat);
+  const longitude = parseFloat(lon);
+
+  if (isNaN(latitude) || isNaN(longitude)) {
+    return res.json({ success: false, offset: 0 });
+  }
+
+  // Check special political offsets first for instant 100% accuracy:
+  // Longitude between 68°E and 97°E (India region) -> IST +5.5
+  if (latitude >= 6.0 && latitude <= 36.0 && longitude >= 68.0 && longitude <= 97.0) {
+    return res.json({ success: true, offset: 5.5 });
+  }
+
+  let fallbackOffset = Math.round(longitude / 15 * 2) / 2;
+
+  try {
+    const r = await fetch(`https://timeapi.io/api/timezone/coordinate?latitude=${latitude}&longitude=${longitude}`, {
+      headers: { 'User-Agent': 'PlacidusAI/1.0' }
+    });
+    if (r.ok) {
+      const d = await r.json();
+      if (d && d.currentUtcOffset && typeof d.currentUtcOffset.seconds === 'number') {
+        const offsetHours = d.currentUtcOffset.seconds / 3600;
+        return res.json({ success: true, offset: offsetHours });
+      }
+    }
+  } catch (_) {}
+
+  return res.json({ success: true, offset: fallbackOffset, fallback: true });
+});
+
 // ─── Calculate Chart ─────────────────────────────────────────────────────────
 app.post('/api/calculate-chart', (req, res) => {
   try {

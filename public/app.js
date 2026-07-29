@@ -80,7 +80,7 @@ function renderCityDropdown(items) {
       document.getElementById('citySearch').value = i.fullName||i.city;
       document.getElementById('latitude').value = i.lat;
       document.getElementById('longitude').value = i.lon;
-      autoEstimateTimezone(i.lon);
+      autoEstimateTimezone(i.lat, i.lon);
       dd.style.display = 'none';
     };
     dd.appendChild(d);
@@ -88,23 +88,32 @@ function renderCityDropdown(items) {
   dd.style.display = 'block';
 }
 
-function autoEstimateTimezone(lon) {
-  if (lon === undefined || lon === null || lon === '' || isNaN(lon)) return;
-  const rawOffset = Math.round(parseFloat(lon) / 15 * 2) / 2;
+async function autoEstimateTimezone(lat, lon) {
+  if (lat === undefined || lon === undefined || lat === '' || lon === '') return;
+  
   const select = document.getElementById('timezoneOffset');
   if (!select) return;
 
-  let closestOpt = select.options[0];
-  let minDiff = 999;
-  for (let idx = 0; idx < select.options.length; idx++) {
-    const optVal = parseFloat(select.options[idx].value);
-    const diff = Math.abs(optVal - rawOffset);
-    if (diff < minDiff) {
-      minDiff = diff;
-      closestOpt = select.options[idx];
+  try {
+    const r = await fetch(`/api/timezone?lat=${lat}&lon=${lon}`);
+    const d = await r.json();
+    if (d.success && d.offset !== undefined) {
+      const targetOffset = d.offset;
+      let closestOpt = select.options[0];
+      let minDiff = 999;
+      for (let idx = 0; idx < select.options.length; idx++) {
+        const optVal = parseFloat(select.options[idx].value);
+        const diff = Math.abs(optVal - targetOffset);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closestOpt = select.options[idx];
+        }
+      }
+      if (closestOpt) select.value = closestOpt.value;
     }
+  } catch(e) {
+    console.warn('Timezone fetch error:', e);
   }
-  if (closestOpt) select.value = closestOpt.value;
 }
 
 // ── Chart Calculation ────────────────────────────────────────────────────────
