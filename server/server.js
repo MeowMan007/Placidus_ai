@@ -144,25 +144,48 @@ RESPONSE FORMAT RULES (MANDATORY):
 
     if (apiKey) {
       try {
-        const r = await fetch(`https://api-inference.huggingface.co/models/${model}`, {
+        const targetModel = modelName || 'meta-llama/Llama-3.3-70B-Instruct-Turbo';
+        const r = await fetch('https://router.huggingface.co/together/v1/chat/completions', {
           method: 'POST',
-          headers: { 'Authorization':`Bearer ${apiKey}`, 'Content-Type':'application/json' },
+          headers: { 
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+          },
           body: JSON.stringify({
-            inputs: `<|im_start|>system\n${systemPrompt}<|im_end|>\n<|im_start|>user\n${userQ}<|im_end|>\n<|im_start|>assistant\n`,
-            parameters: { max_new_tokens:350, temperature:0.65, top_p:0.9, return_full_text:false }
+            model: targetModel,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userQ }
+            ],
+            max_tokens: 350,
+            temperature: 0.65
           })
         });
+
         if (r.ok) {
           const d = await r.json();
-          if (Array.isArray(d) && d[0]?.generated_text) aiText = d[0].generated_text.trim();
-          else if (d.generated_text) aiText = d.generated_text.trim();
+          if (d.choices && d.choices[0]?.message?.content) {
+            aiText = d.choices[0].message.content.trim();
+          }
+        } else {
+          const errBody = await r.text();
+          console.warn(`HF Router API Warning (${r.status}):`, errBody.slice(0, 200));
         }
-      } catch(e) { console.warn('HF API warn:', e.message); }
+      } catch(e) { 
+        console.warn('HF API fetch error:', e.message); 
+      }
     }
 
-    if (!aiText) aiText = builtinInterpretation(chartData, userQ, rag);
+    if (!aiText) {
+      console.log('Using RAG Fallback interpretation');
+      aiText = builtinInterpretation(chartData, userQ, rag);
+    }
 
-    return res.json({ success:true, modelUsed: apiKey ? model : 'Demetra George RAG Engine', response: aiText });
+    return res.json({ 
+      success: true, 
+      modelUsed: aiText && apiKey ? 'meta-llama/Llama-3.3-70B-Instruct-Turbo (via HF Router)' : 'Demetra George RAG Engine', 
+      response: aiText 
+    });
   } catch(e) {
     console.error('AI error:', e);
     return res.status(500).json({ error:'AI interpretation failed' });
