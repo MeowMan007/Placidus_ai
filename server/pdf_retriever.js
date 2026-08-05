@@ -15,6 +15,8 @@ const path = require('path');
 
 let bookChunks = [];
 let initialized = false;
+const queryCache = new Map();
+const MAX_CACHE_SIZE = 100;
 
 // ─── TF-IDF Vocabulary Index ──────────────────────────────────────────────────
 const docFreqs = {};  // term -> number of docs containing term
@@ -148,6 +150,11 @@ function calculateChartEntityBoost(chunk, chartData) {
 function retrieveContext(userQuery, chartData, topN = 4) {
   if (!initialized) initRetriever();
 
+  const cacheKey = `${(userQuery||'').trim().toLowerCase()}_${chartData ? chartData.ascendantRuler : ''}_${topN}`;
+  if (queryCache.has(cacheKey)) {
+    return queryCache.get(cacheKey);
+  }
+
   const queryLower = (userQuery || '').toLowerCase();
   const queryTokens = tokenize(queryLower);
 
@@ -210,7 +217,14 @@ function retrieveContext(userQuery, chartData, topN = 4) {
     page: c.page
   }));
 
-  return { chunks, formatted, citations };
+  const result = { chunks, formatted, citations };
+  if (queryCache.size >= MAX_CACHE_SIZE) {
+    const firstKey = queryCache.keys().next().value;
+    queryCache.delete(firstKey);
+  }
+  queryCache.set(cacheKey, result);
+
+  return result;
 }
 
 function jaccardSimilarity(setA, setB) {
