@@ -5,6 +5,7 @@ const path    = require('path');
 const { calculateChartData }      = require('./ephemeris');
 const { DEMETRA_GEORGE_KNOWLEDGE } = require('./prompts/demetra_george_knowledge');
 const { retrieveContext }          = require('./pdf_retriever');
+const { classifyIntent, buildSystemPrompt, RESPONSE_MODES } = require('./prompt_router');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -117,7 +118,7 @@ app.post('/api/calculate-chart', (req, res) => {
   }
 });
 
-// ─── AI Astrologer with RAG & Conversational Memory ──────────────────────────
+// ─── AI Astrologer with RAG, Intent Router & Multi-Mode Support ───────────────
 app.post('/api/ai-astrologer', async (req, res) => {
   try {
     const { prompt, chartData, history, hfApiKey, modelName } = req.body;
@@ -125,75 +126,50 @@ app.post('/api/ai-astrologer', async (req, res) => {
     const userQ  = prompt || 'Analyze my Ascendant Ruler and North/South Nodes.';
     const chatHistory = Array.isArray(history) ? history : [];
 
-    // ── Build query context for RAG ──
-    // If prompt is short like "elaborate" or "tell me more", combine with previous message
+    // 1. Classify Intent into one of 7 Modes
+    const intent = classifyIntent(userQ, chartData, chatHistory);
+
+    // 2. Build RAG Query & Retrieve Context
     let ragQuery = userQ;
-    if (chatHistory.length > 0 && userQ.length < 20) {
+    if (chatHistory.length > 0 && userQ.length < 25) {
       const lastUser = [...chatHistory].reverse().find(m => m.role === 'user');
       if (lastUser) ragQuery = `${lastUser.content} ${userQ}`;
     }
 
-    // ── RAG: Retrieve book excerpts ──
     const rag = retrieveContext(ragQuery, chartData, 5);
 
-    // ── Build chart context string ──
-    let chartCtx = 'No chart calculated yet.';
+    // 3. Format Chart Context String
+    let chartCtx = 'No active natal chart provided.';
     if (chartData && chartData.positions) {
       const p = chartData.positions;
       chartCtx = `
 CLIENT NATAL CHART:
-City: ${chartData.cityName||''}
+Location: ${chartData.cityName||'Unknown'}
 Sect: ${chartData.sect}
 Ascendant Ruler (Lord of Chart): ${chartData.ascendantRuler}
-Ascendant: ${p.Ascendant ? p.Ascendant.formatted+' H'+p.Ascendant.house : ''}
-MC: ${p.Midheaven ? p.Midheaven.formatted : ''}
-Sun: ${p.Sun ? p.Sun.formatted+' H'+p.Sun.house : ''}
-Moon: ${p.Moon ? p.Moon.formatted+' H'+p.Moon.house : ''}
-Mercury: ${p.Mercury ? p.Mercury.formatted+' H'+p.Mercury.house : ''}
-Venus: ${p.Venus ? p.Venus.formatted+' H'+p.Venus.house : ''}
-Mars: ${p.Mars ? p.Mars.formatted+' H'+p.Mars.house : ''}
-Jupiter: ${p.Jupiter ? p.Jupiter.formatted+' H'+p.Jupiter.house : ''}
-Saturn: ${p.Saturn ? p.Saturn.formatted+' H'+p.Saturn.house : ''}
-Uranus: ${p.Uranus ? p.Uranus.formatted+' H'+p.Uranus.house : ''}
-Neptune: ${p.Neptune ? p.Neptune.formatted+' H'+p.Neptune.house : ''}
-Pluto: ${p.Pluto ? p.Pluto.formatted+' H'+p.Pluto.house : ''}
-North Node: ${p['North Node'] ? p['North Node'].formatted+' H'+p['North Node'].house : ''}
-South Node: ${p['South Node'] ? p['South Node'].formatted+' H'+p['South Node'].house : ''}
-Key Aspects: ${(chartData.aspects||[]).slice(0,12).map(a=>`${a.p1} ${a.aspect} ${a.p2} (${a.orb}°)`).join('; ')}
+Benefic of Sect: ${chartData.beneficOfSect} | Malefic of Sect: ${chartData.maleficOfSect}
+Ascendant: ${p.Ascendant ? p.Ascendant.formatted+' (H'+p.Ascendant.house+')' : 'N/A'}
+Midheaven: ${p.Midheaven ? p.Midheaven.formatted : 'N/A'}
+Sun: ${p.Sun ? p.Sun.formatted+' (H'+p.Sun.house+')' : 'N/A'}
+Moon: ${p.Moon ? p.Moon.formatted+' (H'+p.Moon.house+')' : 'N/A'}
+Mercury: ${p.Mercury ? p.Mercury.formatted+' (H'+p.Mercury.house+')' : 'N/A'}
+Venus: ${p.Venus ? p.Venus.formatted+' (H'+p.Venus.house+')' : 'N/A'}
+Mars: ${p.Mars ? p.Mars.formatted+' (H'+p.Mars.house+')' : 'N/A'}
+Jupiter: ${p.Jupiter ? p.Jupiter.formatted+' (H'+p.Jupiter.house+')' : 'N/A'}
+Saturn: ${p.Saturn ? p.Saturn.formatted+' (H'+p.Saturn.house+')' : 'N/A'}
+North Node: ${p['North Node'] ? p['North Node'].formatted+' (H'+p['North Node'].house+')' : 'N/A'}
+South Node: ${p['South Node'] ? p['South Node'].formatted+' (H'+p['South Node'].house+')' : 'N/A'}
+Key Aspects: ${(chartData.aspects||[]).slice(0,10).map(a=>`${a.p1} ${a.aspect} ${a.p2} (${a.orb}°)`).join('; ')}
 `;
     }
 
-    // ── System Prompt for Master Astrologer AI ──
-    const systemPrompt = `You are Placidus AI, an empathetic, master traditional astrologer and natal counselor operating under the Authentic Self astrological framework.
+    // 4. Construct System Prompt using Prompt Router
+    const systemPrompt = buildSystemPrompt(intent, chartCtx, rag.formatted, rag.citations);
 
-AUTHENTIC SELF ASTROLOGICAL FRAMEWORK & METHODOLOGY:
-${DEMETRA_GEORGE_KNOWLEDGE}
-
-${chartCtx}
-
-RETRIEVED ANCIENT WISDOM & KNOWLEDGE BASE EXCERPTS:
-====
-${rag.formatted}
-====
-
-STRICT RESPONSE FORMATTING & STYLE DIRECTIVES:
-1. ANONYMITY & BRANDING: Do NOT cite author names (e.g. "Demetra George") or book titles in your output text. Attribute insights to "Traditional Hellenistic principles", "Classical astrological wisdom", or "The Authentic Self framework".
-2. INITIAL CHART QUESTION OR PRESET CHIP:
-   - Structure your response in EXACTLY 3 clear sections (~100-120 words total):
-     📜 **Astrological Principle:** 1-2 sentences explaining the core traditional rule or concept from the knowledge base.
-     ✨ **Chart Reading:** 2-3 sentences analyzing the client's exact natal positions (degrees, signs, houses, sect).
-     🔮 **Guidance:** 1 sentence actionable advice for authentic self-expression.
-3. ELABORATION, FOLLOW-UP, OR CONTINUING CONVERSATION:
-   - DROP THE RIGID HEADINGS AND FORMAT! Do NOT use 📜/✨/🔮 headings when asked to elaborate or follow up.
-   - Speak naturally, fluidly, and comprehensively (~100-180 words) as an expert astrological counselor.
-   - Deepen your explanation of the previously discussed placement, aspect, or chart mechanics. Explain planetary dignities, sect conditions, triplicity, or house dynamics with nuance and depth using your astrological knowledge and the retrieved excerpts.
-4. Always ground your analysis in the client's actual chart data provided above.
-`;
-
-    // Build LLM messages array with history
+    // Build LLM messages
     const llmMessages = [{ role: 'system', content: systemPrompt }];
     
-    // Include last 6 turns of conversation history for context
+    // Include recent history (up to 6 turns)
     const recentHistory = chatHistory.slice(-6);
     recentHistory.forEach(m => {
       if (m.role === 'user' || m.role === 'assistant') {
@@ -201,7 +177,6 @@ STRICT RESPONSE FORMATTING & STYLE DIRECTIVES:
       }
     });
 
-    // Add current user question if not already in history
     if (!recentHistory.length || recentHistory[recentHistory.length - 1].content !== userQ) {
       llmMessages.push({ role: 'user', content: userQ });
     }
@@ -220,8 +195,8 @@ STRICT RESPONSE FORMATTING & STYLE DIRECTIVES:
           body: JSON.stringify({
             model: targetModel,
             messages: llmMessages,
-            max_tokens: 350,
-            temperature: 0.7
+            max_tokens: 500,
+            temperature: 0.65
           })
         });
 
@@ -231,8 +206,7 @@ STRICT RESPONSE FORMATTING & STYLE DIRECTIVES:
             aiText = d.choices[0].message.content.trim();
           }
         } else {
-          const errBody = await r.text();
-          console.warn(`HF Router API Warning (${r.status}):`, errBody.slice(0, 200));
+          console.warn(`HF Router API Warning (${r.status}):`, (await r.text()).slice(0, 200));
         }
       } catch(e) { 
         console.warn('HF API fetch error:', e.message); 
@@ -240,13 +214,15 @@ STRICT RESPONSE FORMATTING & STYLE DIRECTIVES:
     }
 
     if (!aiText) {
-      aiText = builtinInterpretation(chartData, userQ, rag, chatHistory);
+      aiText = builtinInterpretation(chartData, userQ, rag, chatHistory, intent);
     }
 
     return res.json({ 
       success: true, 
+      mode: intent.mode,
       modelUsed: aiText && apiKey ? 'meta-llama/Llama-3.3-70B-Instruct-Turbo' : 'Authentic Self RAG Engine', 
-      response: aiText 
+      response: aiText,
+      citations: rag.citations
     });
   } catch(e) {
     console.error('AI error:', e);
@@ -254,63 +230,51 @@ STRICT RESPONSE FORMATTING & STYLE DIRECTIVES:
   }
 });
 
-// ─── Built-in RAG Fallback Interpreter ───────────────────────────────────────
-function builtinInterpretation(chart, query, rag, history) {
-  if (!chart || !chart.positions) {
-    return 'Please calculate your birth chart first to receive an astrological analysis.';
+// ─── Built-in Fallback Interpreter ───────────────────────────────────────────
+function builtinInterpretation(chart, query, rag, history, intent) {
+  const p     = chart ? chart.positions : null;
+  const qLower = query.toLowerCase();
+
+  if (intent.mode === RESPONSE_MODES.MODE_2_KNOWLEDGE || intent.mode === RESPONSE_MODES.MODE_3_EDUCATIONAL) {
+    const excerpt = rag.chunks && rag.chunks[0] ? rag.chunks[0].text : 'Astrology is the language of life purpose.';
+    return `📜 **Astrological Principle:** Classical Hellenistic astrology frames the natal chart as a structural blueprint of soul potential.
+
+✨ **Core Knowledge:** ${excerpt}
+
+🔮 **Application:** Integrate this principle by honoring both the structural matrix of your chart and your personal choice.`;
   }
 
-  const p       = chart.positions;
-  const qLower  = query.toLowerCase();
-  const ascR    = chart.ascendantRuler;
-  const rulerP  = p[ascR] || {};
+  if (intent.mode === RESPONSE_MODES.MODE_5_COMPARISON) {
+    return `### Comparison: Whole Sign Houses vs. Placidus Houses
 
-  const snippet = rag.chunks && rag.chunks[0]
-    ? rag.chunks[0].text.slice(0,180).replace(/\s+/g,' ')
-    : 'The natal chart is a blueprint of the authentic self.';
+- **Whole Sign Houses (Hellenistic Origin):** Assigns entire 30° zodiac signs to houses starting from the Ascendant sign. Simple, ancient, and ideal for topic rulerships.
+- **Placidus Houses (17th Century):** Quad-divided by time arcs. Places cusps at specific degrees, allowing intercepted signs and unequal house sizes. Ideal for precise angular timing.
 
-  // Check if user is asking for elaboration / follow-up
-  const isElaboration = qLower.includes('elaborate') || qLower.includes('more') || qLower.includes('why') || qLower.includes('explain') || history.length >= 2;
-
-  if (isElaboration) {
-    // Determine target placement discussed
-    let target = 'placement';
-    for (const pl of Object.keys(p)) {
-      if (qLower.includes(pl.toLowerCase())) { target = pl; break; }
-    }
-
-    const pos = p[target] || rulerP;
-    return `Regarding **${pos.name || ascR}** in **${pos.formatted || 'your chart'}** (House ${pos.house || '1'}):
-
-In traditional Hellenistic astrology, when a planet occupies House ${pos.house || '1'}, its energy directly shapes your physical experience and daily activities. Classical principles teach that operating in ${pos.sign || 'this sign'} (${pos.element || 'Fire'} element) requires aligning your intentions with the sign's triplicity ruler.
-
-Because your chart is a **${chart.sect}**, ${chart.beneficOfSect} acts as your primary planetary ally for growth, while ${chart.maleficOfSect} highlights areas requiring conscious mastery. Elevating ${pos.name || ascR} in House ${pos.house || '1'} grants you the focus to transform raw potential into authentic self-expression.`;
+Both systems offer unique insights into the natal chart.`;
   }
 
-  if (qLower.includes('node') || qLower.includes('destiny') || qLower.includes('karma')) {
+  if (!chart || !p) {
+    return 'Please calculate your natal chart first to receive a personalized chart reading.';
+  }
+
+  const ascR   = chart.ascendantRuler;
+  const rulerP = p[ascR] || {};
+
+  if (qLower.includes('node')) {
     const nn = p['North Node'] || {};
     const sn = p['South Node'] || {};
-    return `📜 **Astrological Principle:** Classical wisdom teaches that the South Node represents innate mastery and familiar patterns, while the North Node marks the evolutionary direction the soul must consciously cultivate.
+    return `📜 **Astrological Principle:** The South Node represents inherent mastery, while the North Node marks the evolutionary soul direction.
 
-✨ **Chart Reading:** Your North Node in ${nn.formatted||'N/A'} (House ${nn.house||'?'}) calls you toward growth through ${nn.sign||'N/A'} qualities, while your South Node in ${sn.formatted||'N/A'} (House ${sn.house||'?'}) shows comfortable ${sn.sign||''} habits to release.
+✨ **Chart Reading:** Your North Node in ${nn.formatted||'N/A'} (House ${nn.house||'?'}) invites growth in ${nn.sign||''} themes, anchored by South Node mastery in ${sn.formatted||'N/A'}.
 
-🔮 **Guidance:** Channel your South Node talents as a foundation, but invest daily effort into your North Node house ${nn.house||''} affairs.`;
+🔮 **Guidance:** Use South Node talents as a springboard, but invest conscious effort in your North Node House ${nn.house||''} affairs.`;
   }
 
-  if (qLower.includes('ascendant') || qLower.includes('ruler') || qLower.includes('lord')) {
-    return `📜 **Astrological Principle:** Traditional astrology designates the Ascendant Ruler as the Lord of the Chart, the primary planet steering your life direction and physical vessel.
+  return `📜 **Astrological Principle:** The Ascendant Ruler guides the physical vessel and primary life direction.
 
-✨ **Chart Reading:** With your Ascendant in ${p.Ascendant?.formatted||'N/A'}, ${ascR} is your chart ruler, placed in ${rulerP.formatted||'N/A'} (House ${rulerP.house||'?'}). This directs your vital force toward House ${rulerP.house||''} matters.
+✨ **Chart Reading:** Your ${chart.sect} is steered by Lord of the Chart **${ascR}** in ${rulerP.formatted||'N/A'} (House ${rulerP.house||'?'}), with Sun in ${p.Sun?.formatted||'N/A'} and Moon in ${p.Moon?.formatted||'N/A'}.
 
-🔮 **Guidance:** Align daily actions with ${ascR}'s house placement to manifest your authentic life direction.`;
-  }
-
-  // Default reading
-  return `📜 **Astrological Principle:** The natal chart is a living blueprint where traditional planetary conditions provide structure and modern archetypes reveal soul potential.
-
-✨ **Chart Reading:** Your ${chart.sect} chart is ruled by ${ascR} (${rulerP.formatted||'N/A'}, H${rulerP.house||'?'}), with Sun in ${p.Sun?.formatted||'N/A'} and Moon in ${p.Moon?.formatted||'N/A'} guiding conscious and emotional life.
-
-🔮 **Guidance:** Embody your Ascendant ruler's sign and house qualities daily to express your authentic self with clarity.`;
+🔮 **Guidance:** Embody your Ascendant ruler's sign and house qualities daily to express your authentic self.`;
 }
 
 module.exports = app;
