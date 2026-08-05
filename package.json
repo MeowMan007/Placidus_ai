@@ -2,10 +2,10 @@
   "name": "placidus-ai",
   "version": "1.0.0",
   "description": "Astro-Seek inspired Birth Chart AI Astrologer built on Demetra George's Astrology and the Authentic Self",
-  "main": "server.js",
+  "main": "server/server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js"
+    "start": "node server/server.js",
+    "dev": "node --watch server/server.js"
   },
   "dependencies": {
     "astronomy-engine": "^2.1.19",
