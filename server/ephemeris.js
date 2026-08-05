@@ -1,7 +1,7 @@
 /**
- * Placidus AI — High-Precision Ephemeris Engine
+ * Placidus AI — High-Precision Hellenistic Ephemeris Engine
  * Uses astronomy-engine (Don Cross) for sub-arcsecond planetary positions.
- * All positions verified against Astro-Seek.com reference charts.
+ * Extended with Traditional Hellenistic Essential Dignities, Lots, and Retrograde detection.
  */
 
 'use strict';
@@ -26,7 +26,8 @@ const PLANET_SYMBOLS = {
   Sun:'☉', Moon:'☽', Mercury:'☿', Venus:'♀', Mars:'♂',
   Jupiter:'♃', Saturn:'♄', Uranus:'♅', Neptune:'♆', Pluto:'♇',
   'North Node':'☊', 'South Node':'☋',
-  Ascendant:'ASC', Midheaven:'MC'
+  'Part of Fortune':'⊗', 'Part of Spirit':'⊕',
+  Ascendant:'AC', Midheaven:'MC'
 };
 
 const PLANET_ELEMENTS = {
@@ -36,17 +37,36 @@ const PLANET_ELEMENTS = {
   Cancer:'Water', Scorpio:'Water', Pisces:'Water'
 };
 
+// ─── Traditional Dignity Tables ──────────────────────────────────────────────
+const DOMICILES = {
+  Aries:'Mars', Taurus:'Venus', Gemini:'Mercury', Cancer:'Moon',
+  Leo:'Sun', Virgo:'Mercury', Libra:'Venus', Scorpio:'Mars',
+  Sagittarius:'Jupiter', Capricorn:'Saturn', Aquarius:'Saturn', Pisces:'Jupiter'
+};
+
+const EXALTATIONS = {
+  Aries:'Sun', Taurus:'Moon', Cancer:'Jupiter', Virgo:'Mercury',
+  Libra:'Saturn', Capricorn:'Mars', Pisces:'Venus'
+};
+
+const DETRIMENTS = {
+  Aries:'Venus', Taurus:'Mars', Gemini:'Jupiter', Cancer:'Saturn',
+  Leo:'Saturn', Virgo:'Jupiter', Libra:'Mars', Scorpio:'Venus',
+  Sagittarius:'Mercury', Capricorn:'Moon', Aquarius:'Sun', Pisces:'Mercury'
+};
+
+const FALLS = {
+  Aries:'Saturn', Taurus:'None', Cancer:'Mars', Virgo:'Venus',
+  Libra:'Sun', Capricorn:'Jupiter', Pisces:'Mercury'
+};
+
 // ─── Utilities ───────────────────────────────────────────────────────────────
 
 function norm360(v) { return ((v % 360) + 360) % 360; }
 
 function estimateTimezoneOffset(lon) {
-  // Estimate UTC offset in hours from longitude
-  // Uses 15°/hour rule rounded to nearest 0.5 hour
   return Math.round(lon / 15 * 2) / 2;
 }
-
-// ─── Format ecliptic longitude → sign/degree/minute ──────────────────────────
 
 function formatPos(lon) {
   lon = norm360(lon);
@@ -66,7 +86,15 @@ function formatPos(lon) {
   };
 }
 
-// ─── Ascendant ──────────────────────────────────────────────────────────────
+function calcEssentialDignity(planetName, signName) {
+  if (DOMICILES[signName] === planetName) return { status: 'Domicile', score: 5, label: 'Ruler (+5)' };
+  if (EXALTATIONS[signName] === planetName) return { status: 'Exaltation', score: 4, label: 'Exalted (+4)' };
+  if (DETRIMENTS[signName] === planetName) return { status: 'Detriment', score: -5, label: 'Detriment (-5)' };
+  if (FALLS[signName] === planetName) return { status: 'Fall', score: -4, label: 'Fall (-4)' };
+  return { status: 'Peregrine', score: 0, label: 'Peregrine (0)' };
+}
+
+// ─── Ascendant & MC ─────────────────────────────────────────────────────────
 
 function calcAscendant(RAMC, eps, lat) {
   const y = -Math.cos(RAMC * RAD);
@@ -76,144 +104,84 @@ function calcAscendant(RAMC, eps, lat) {
   return norm360(asc);
 }
 
-// ─── MC (Midheaven) ─────────────────────────────────────────────────────────
-
 function calcMC(RAMC, eps) {
   let mc = Math.atan(Math.tan(RAMC * RAD) / Math.cos(eps * RAD)) * DEG;
-  // Quadrant fix: MC should be within 90° of RAMC
   while (mc < RAMC - 90) mc += 180;
   while (mc > RAMC + 90) mc -= 180;
   return norm360(mc);
 }
 
-// ─── Placidus House Cusps (Iterative Semi-Arc Trisection) ────────────────────
-// Standard Placidus algorithm: for each intermediate cusp, find the ecliptic
-// longitude where the semi-arc has been divided in the appropriate ratio.
-// Uses iterative Newton-Raphson method (the same approach as Swiss Ephemeris).
+// ─── Placidus & Whole Sign House Cusps ───────────────────────────────────────
 
 function calcPlacidusHouses(RAMC, eps, lat, ascLon, mcLon) {
   const cusps = new Array(12);
-  cusps[0]  = ascLon;                     // House 1 = ASC
-  cusps[9]  = mcLon;                      // House 10 = MC
-  cusps[6]  = norm360(ascLon + 180);      // House 7 = DSC
-  cusps[3]  = norm360(mcLon + 180);       // House 4 = IC
+  cusps[0]  = ascLon;                     // H1 = ASC
+  cusps[9]  = mcLon;                      // H10 = MC
+  cusps[6]  = norm360(ascLon + 180);      // H7 = DSC
+  cusps[3]  = norm360(mcLon + 180);       // H4 = IC
 
-  // Placidus intermediate cusps via RAMC offsets + iterative solution
-  // Cusp N is found by solving: RAMC_cusp = RAMC + offset
-  // Then finding the ecliptic longitude at that RAMC
-
-  // The 8 intermediate cusps correspond to these RAMC offsets:
-  // H11: RAMC + 30°,  H12: RAMC + 60°
-  // H2:  RAMC + 120°, H3:  RAMC + 150°
-  // H5:  RAMC + 210°, H6:  RAMC + 240°
-  // H8:  RAMC + 300°, H9:  RAMC + 330°
-
-  // For houses above horizon (11,12): use diurnal semi-arc formula
-  // For houses below horizon (2,3): use nocturnal semi-arc formula
-
-  // Simplified Placidus: compute the ecliptic longitude that crosses
-  // the local meridian at the fractional RAMC position.
-  
-  // House cusps by RAMC fraction method (Placidus-like):
-  // This uses the MC formula at offset RAMC values, which gives
-  // a Placidus-equivalent result for the MC-derived cusps.
-  
-  // Houses 11 and 12 (between MC and ASC, above horizon)
   cusps[10] = placidusIntermediateCusp(RAMC, eps, lat, 1/3, true);   // H11
   cusps[11] = placidusIntermediateCusp(RAMC, eps, lat, 2/3, true);   // H12
-  
-  // Houses 2 and 3 (between ASC and IC, below horizon)
   cusps[1]  = placidusIntermediateCusp(RAMC, eps, lat, 1/3, false);  // H2
   cusps[2]  = placidusIntermediateCusp(RAMC, eps, lat, 2/3, false);  // H3
-  
-  // Houses 5 and 6 (opposite of 11 and 12)
-  cusps[4]  = norm360(cusps[10] + 180);  // H5 = H11 + 180°
-  cusps[5]  = norm360(cusps[11] + 180);  // H6 = H12 + 180°
-  
-  // Houses 8 and 9 (opposite of 2 and 3)
-  cusps[7]  = norm360(cusps[1] + 180);   // H8 = H2 + 180°
-  cusps[8]  = norm360(cusps[2] + 180);   // H9 = H3 + 180°
-  
+  cusps[4]  = norm360(cusps[10] + 180);  // H5
+  cusps[5]  = norm360(cusps[11] + 180);  // H6
+  cusps[7]  = norm360(cusps[1] + 180);   // H8
+  cusps[8]  = norm360(cusps[2] + 180);   // H9
+
   return cusps;
 }
 
-/**
- * Calculate a Placidus intermediate cusp using the semi-arc trisection method.
- * 
- * The key Placidus condition:
- *   - At MC:  RA = RAMC (hour angle = 0)
- *   - At ASC: RA = RAMC − DSA (hour angle = DSA, at eastern horizon)
- * 
- * Above horizon (H11, H12 — between MC and ASC):
- *   target_RA = RAMC − f × DSA(λ)
- * 
- * Below horizon (H2, H3 — between ASC and IC):
- *   target_RA = RAMC − DSA(λ) − f × NSA(λ)
- *   where NSA = 180° − DSA
- * 
- * @param {number} RAMC - Right Ascension of MC in degrees
- * @param {number} eps - Obliquity of ecliptic in degrees
- * @param {number} lat - Geographic latitude in degrees
- * @param {number} fraction - 1/3 or 2/3 of the semi-arc
- * @param {boolean} aboveHorizon - true for H11/H12, false for H2/H3
- */
+function calcWholeSignHouses(ascLon) {
+  const ascSignIdx = Math.floor(ascLon / 30);
+  const cusps = new Array(12);
+  for (let i = 0; i < 12; i++) {
+    cusps[i] = norm360((ascSignIdx + i) * 30);
+  }
+  return cusps;
+}
+
 function placidusIntermediateCusp(RAMC, eps, lat, fraction, aboveHorizon) {
   const ascLon = calcAscendant(RAMC, eps, lat);
   const mcLon  = calcMC(RAMC, eps);
   const icLon  = norm360(mcLon + 180);
 
-  // Initial guess: linear interpolation along the ecliptic arc
   let lambda;
   if (aboveHorizon) {
-    // Between MC and ASC going clockwise (decreasing longitude on chart)
     let arc = mcLon - ascLon;
     if (arc < 0) arc += 360;
     lambda = norm360(mcLon - arc * fraction);
   } else {
-    // Between ASC and IC going clockwise
     let arc = ascLon - icLon;
     if (arc < 0) arc += 360;
     lambda = norm360(ascLon - arc * fraction);
   }
 
-  // Fixed-point iteration
   for (let iter = 0; iter < 100; iter++) {
-    // Declination of the ecliptic point at lambda
     const decl = Math.asin(Math.sin(eps * RAD) * Math.sin(lambda * RAD)) * DEG;
-
-    // Diurnal Semi-Arc (DSA) in degrees of RA
     const cosH0 = -Math.tan(lat * RAD) * Math.tan(decl * RAD);
     let DSA;
-    if (cosH0 < -1) DSA = 180;      // circumpolar — always above horizon
-    else if (cosH0 > 1) DSA = 0;     // never rises
+    if (cosH0 < -1) DSA = 180;
+    else if (cosH0 > 1) DSA = 0;
     else DSA = Math.acos(cosH0) * DEG;
 
-    // Compute the target RA for this cusp
     let targetRA;
     if (aboveHorizon) {
-      // H11 (f=1/3), H12 (f=2/3): between MC and ASC
       targetRA = RAMC - fraction * DSA;
     } else {
-      // H2 (f=1/3), H3 (f=2/3): between ASC and IC
       const NSA = 180 - DSA;
       targetRA = RAMC - DSA - fraction * NSA;
     }
 
-    // Convert target RA → ecliptic longitude via MC formula
-    // (the MC formula finds the ecliptic longitude on the meridian at a given RAMC)
     targetRA = norm360(targetRA);
     let newLambda = Math.atan(Math.tan(targetRA * RAD) / Math.cos(eps * RAD)) * DEG;
-
-    // Quadrant fix: newLambda must be within 90° of targetRA
     while (newLambda < targetRA - 90) newLambda += 180;
     while (newLambda > targetRA + 90) newLambda -= 180;
     newLambda = norm360(newLambda);
 
-    // Check convergence
     let diff = Math.abs(newLambda - lambda);
     if (diff > 180) diff = 360 - diff;
     if (diff < 0.0005) break;
-
     lambda = newLambda;
   }
 
@@ -225,13 +193,13 @@ function placidusIntermediateCusp(RAMC, eps, lat, fraction, aboveHorizon) {
 function calcAspects(positions) {
   const planetList = ['Sun','Moon','Mercury','Venus','Mars','Jupiter','Saturn','Uranus','Neptune','Pluto'];
   const aspectDefs = [
-    { name:'Conjunction',  angle:  0, orb:8, symbol:'☌', type:'major', color:'#fbbf24' },
+    { name:'Conjunction',  angle:  0, orb:8, symbol:'☌', type:'major', color:'#C9A84C' },
     { name:'Semi-Sextile', angle: 30, orb:2, symbol:'∠', type:'minor', color:'#94a3b8' },
-    { name:'Sextile',      angle: 60, orb:6, symbol:'⚹', type:'soft',  color:'#06b6d4' },
-    { name:'Square',       angle: 90, orb:7, symbol:'□', type:'hard',  color:'#ef4444' },
-    { name:'Trine',        angle:120, orb:8, symbol:'△', type:'soft',  color:'#22c55e' },
+    { name:'Sextile',      angle: 60, orb:6, symbol:'⚹', type:'soft',  color:'#3DB8A0' },
+    { name:'Square',       angle: 90, orb:7, symbol:'□', type:'hard',  color:'#D45B5B' },
+    { name:'Trine',        angle:120, orb:8, symbol:'△', type:'soft',  color:'#3DB8A0' },
     { name:'Quincunx',     angle:150, orb:2, symbol:'⚻', type:'minor', color:'#a855f7' },
-    { name:'Opposition',   angle:180, orb:8, symbol:'☍', type:'hard',  color:'#f97316' }
+    { name:'Opposition',   angle:180, orb:8, symbol:'☍', type:'hard',  color:'#D45B5B' }
   ];
 
   const aspects = [];
@@ -254,8 +222,7 @@ function calcAspects(positions) {
             symbol: def.symbol,
             orb: parseFloat(orb.toFixed(2)),
             color: def.color,
-            type: def.type,
-            applying: p1.longitude < p2.longitude
+            type: def.type
           });
         }
       }
@@ -264,13 +231,12 @@ function calcAspects(positions) {
   return aspects;
 }
 
-// ─── Main Chart Calculation ──────────────────────────────────────────────────
+// ─── Main Chart Calculation Engine ──────────────────────────────────────────
 
 function calculateChartData(birthDateStr, birthTimeStr, lat, lon, timezoneOffset) {
   const [yr, mo, da] = birthDateStr.split('-').map(Number);
   const [hr, mn] = (birthTimeStr || '12:00').split(':').map(Number);
 
-  // Timezone: convert local time to UTC
   const tzOffset = (timezoneOffset !== undefined && timezoneOffset !== null)
     ? parseFloat(timezoneOffset)
     : estimateTimezoneOffset(lon);
@@ -278,7 +244,6 @@ function calculateChartData(birthDateStr, birthTimeStr, lat, lon, timezoneOffset
   const localMinutes = hr * 60 + mn;
   let utcMinutes = localMinutes - tzOffset * 60;
 
-  // Handle day rollover
   let utcDay = da;
   if (utcMinutes < 0)    { utcMinutes += 1440; utcDay--; }
   if (utcMinutes >= 1440) { utcMinutes -= 1440; utcDay++; }
@@ -287,91 +252,123 @@ function calculateChartData(birthDateStr, birthTimeStr, lat, lon, timezoneOffset
   const utcMn = Math.round(utcMinutes % 60);
 
   const utcDate = new Date(Date.UTC(yr, mo - 1, utcDay, utcHr, utcMn, 0));
-
-  // Julian centuries since J2000
   const T = ((utcDate - new Date(Date.UTC(2000, 0, 1, 12, 0, 0))) / 86400000) / 36525;
-  const eps = 23.4392911 - 0.0130042 * T; // Obliquity of ecliptic
+  const eps = 23.4392911 - 0.0130042 * T;
 
-  // ── Ecliptic rotation matrix (J2000 equatorial → ecliptic of-date) ──
   const rot = Astronomy.Rotation_EQJ_ECT(utcDate);
 
-  // ── Sun ──
+  // ── Sun & Moon ──
   const sunPos = Astronomy.SunPosition(utcDate);
   const sunLon = sunPos.elon;
 
-  // ── Moon (geocentric ecliptic of-date) ──
   const moonVec = Astronomy.GeoMoon(utcDate);
   const moonEcl = Astronomy.RotateVector(rot, moonVec);
   const moonLon = norm360(Math.atan2(moonEcl.y, moonEcl.x) * DEG);
 
-  // ── Planets ──
+  // ── Planets & Retrograde Check ──
   const planetNames = ['Mercury', 'Venus', 'Mars', 'Jupiter', 'Saturn', 'Uranus', 'Neptune', 'Pluto'];
   const rawPositions = { Sun: sunLon, Moon: moonLon };
+  const isRetrograde = {};
+
+  // Check 1-hour motion for retrograde status
+  const utcDateLater = new Date(utcDate.getTime() + 3600000);
+  const rotLater = Astronomy.Rotation_EQJ_ECT(utcDateLater);
 
   for (const body of planetNames) {
     const gv = Astronomy.GeoVector(body, utcDate, true);
     const ecl = Astronomy.RotateVector(rot, gv);
-    rawPositions[body] = norm360(Math.atan2(ecl.y, ecl.x) * DEG);
+    const lon1 = norm360(Math.atan2(ecl.y, ecl.x) * DEG);
+    rawPositions[body] = lon1;
+
+    const gv2 = Astronomy.GeoVector(body, utcDateLater, true);
+    const ecl2 = Astronomy.RotateVector(rotLater, gv2);
+    const lon2 = norm360(Math.atan2(ecl2.y, ecl2.x) * DEG);
+
+    let diff = lon2 - lon1;
+    if (diff > 180) diff -= 360;
+    if (diff < -180) diff += 360;
+    isRetrograde[body] = diff < 0;
   }
 
-  // ── Lunar Nodes (mean) ──
+  // ── Lunar Nodes ──
   const nnLon = norm360(125.04452 - 1934.136261 * T + 0.0020708 * T * T);
   rawPositions['North Node'] = nnLon;
   rawPositions['South Node'] = norm360(nnLon + 180);
 
-  // ── Sidereal Time → RAMC → ASC & MC ──
+  // ── RAMC, ASC, MC ──
   const gast = Astronomy.SiderealTime(utcDate);
   const lst = ((gast + lon / 15) % 24 + 24) % 24;
-  const RAMC = lst * 15; // degrees
+  const RAMC = lst * 15;
 
   const ascLon = calcAscendant(RAMC, eps, lat);
-  const mcLon = calcMC(RAMC, eps);
+  const mcLon  = calcMC(RAMC, eps);
 
   rawPositions['Ascendant'] = ascLon;
   rawPositions['Midheaven'] = mcLon;
 
-  // ── Format all positions ──
+  // ── Sect Determination ──
+  // Placidus House 1 = ASC, House 7 = DSC. Sun in Houses 7..12 = Above horizon (Day Chart)
+  const tempPlacidusCusps = calcPlacidusHouses(RAMC, eps, lat, ascLon, mcLon);
+  let sunPlacidusHouse = 1;
+  for (let h = 0; h < 12; h++) {
+    const c1 = tempPlacidusCusps[h];
+    const c2 = tempPlacidusCusps[(h + 1) % 12];
+    let inHouse = c1 <= c2 ? (sunLon >= c1 && sunLon < c2) : (sunLon >= c1 || sunLon < c2);
+    if (inHouse) { sunPlacidusHouse = h + 1; break; }
+  }
+  const isDayChart = sunPlacidusHouse >= 7 && sunPlacidusHouse <= 12;
+
+  // ── Lots (Parts) Calculation ──
+  // Day: Fortune = ASC + Moon - Sun | Night: Fortune = ASC + Sun - Moon
+  const fortuneLon = isDayChart
+    ? norm360(ascLon + moonLon - sunLon)
+    : norm360(ascLon + sunLon - moonLon);
+
+  // Day: Spirit = ASC + Sun - Moon | Night: Spirit = ASC + Moon - Sun
+  const spiritLon = isDayChart
+    ? norm360(ascLon + sunLon - moonLon)
+    : norm360(ascLon + moonLon - sunLon);
+
+  rawPositions['Part of Fortune'] = fortuneLon;
+  rawPositions['Part of Spirit']  = spiritLon;
+
+  // ── Format All Positions + Essential Dignities ──
   const positions = {};
   for (const [name, lonVal] of Object.entries(rawPositions)) {
+    const formatted = formatPos(lonVal);
+    const dignity   = calcEssentialDignity(name, formatted.sign);
     positions[name] = {
       name,
       symbol: PLANET_SYMBOLS[name] || name,
-      ...formatPos(lonVal)
+      ...formatted,
+      isRetrograde: !!isRetrograde[name],
+      dignity: dignity
     };
   }
 
-  // ── House cusps ──
-  const cuspLons = calcPlacidusHouses(RAMC, eps, lat, ascLon, mcLon);
+  // ── House Cusps ──
+  const cuspLons = tempPlacidusCusps;
   const houses = cuspLons.map((cLon, i) => ({
     house: i + 1,
     ...formatPos(cLon),
     longitude: parseFloat(cLon.toFixed(4))
   }));
 
-  // ── Assign house placement to each planet ──
+  // Assign Placidus house to each planet
   for (const planet of Object.values(positions)) {
     let houseNum = 1;
     for (let h = 0; h < 12; h++) {
       const c1 = cuspLons[h];
       const c2 = cuspLons[(h + 1) % 12];
       const pLon = planet.longitude;
-      let inHouse;
-      if (c1 <= c2) {
-        inHouse = pLon >= c1 && pLon < c2;
-      } else {
-        inHouse = pLon >= c1 || pLon < c2;
-      }
+      let inHouse = c1 <= c2 ? (pLon >= c1 && pLon < c2) : (pLon >= c1 || pLon < c2);
       if (inHouse) { houseNum = h + 1; break; }
     }
     planet.house = houseNum;
   }
 
-  // ── Sect ──
-  const sunHouse = positions['Sun'] ? positions['Sun'].house : 1;
-  const isDayChart = sunHouse >= 7 && sunHouse <= 12;
-
   const ascSignName = positions['Ascendant'] ? positions['Ascendant'].sign : 'Aries';
-  const ascRuler = getSignRuler(ascSignName);
+  const ascRuler    = getSignRuler(ascSignName);
 
   // ── Aspects ──
   const aspects = calcAspects(positions);
@@ -398,16 +395,13 @@ function calculateChartData(birthDateStr, birthTimeStr, lat, lon, timezoneOffset
 }
 
 function getSignRuler(sign) {
-  const r = {
-    Aries:'Mars', Taurus:'Venus', Gemini:'Mercury', Cancer:'Moon',
-    Leo:'Sun', Virgo:'Mercury', Libra:'Venus', Scorpio:'Mars',
-    Sagittarius:'Jupiter', Capricorn:'Saturn', Aquarius:'Saturn', Pisces:'Jupiter'
-  };
-  return r[sign] || 'Sun';
+  return DOMICILES[sign] || 'Sun';
 }
 
 module.exports = {
   calculateChartData,
+  calcEssentialDignity,
+  calcWholeSignHouses,
   ZODIAC_SIGNS,
   SIGN_SYMBOLS,
   PLANET_SYMBOLS,
