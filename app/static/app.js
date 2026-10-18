@@ -742,8 +742,8 @@ async function submitCounselorQuery(message) {
     const data = await res.json();
     let formattedText = formatMarkdown(data.message || 'No interpretation generated.');
 
-    // Append citations if available
-    if (data.citations && data.citations.length > 0) {
+    // Append citations if available and not already rendered in message
+    if (data.citations && data.citations.length > 0 && !formattedText.includes('Classical Astrological Teaching') && !formattedText.includes('Manuscript References')) {
       formattedText += '<div style="margin-top: 1rem; border-top: 1px solid var(--border-hairline); padding-top: 0.75rem;">';
       formattedText += '<div style="font-size: 0.75rem; text-transform: uppercase; color: var(--brass-mid); font-family: monospace; margin-bottom: 0.4rem;">Authoritative Sources & Citations:</div>';
       data.citations.slice(0, 2).forEach(c => {

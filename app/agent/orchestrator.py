@@ -612,8 +612,24 @@ Operating in a **{sect}**, your primary in-sect ally is **{getattr(self.chart, '
                     res += f"> *\"{c.text[:200]}...\"* — **{c.source}**\n"
             return res
 
-        # Fallback when no chart is calculated yet
-        return "To analyze your specific birth chart placements, please calculate your chart first using your date, time, and birthplace on the Chart tab. You can also ask any questions about astrological signs, houses, aspects, or Demetra George's Hellenistic teachings."
+        # When no birth chart is loaded yet, answer directly from RAG knowledge base
+        if citations:
+            sections = [
+                "## Classical Astrological Teaching\n",
+                f"Drawing from the foundational lineage of **Demetra George** (*Ancient Astrology in Theory and Practice* / *Astrology and the Authentic Self*):\n"
+            ]
+            for i, c in enumerate(citations[:3], 1):
+                clean_txt = re.sub(r'\s+', ' ', c.text).strip()
+                sections.append(
+                    f"### Key Excerpt {i}: {c.chapter} (p. {c.page})\n"
+                    f"> \"{clean_txt}\"\n"
+                )
+            sections.append(
+                "\n*Tip: Calculate your natal chart on the Observatory tab above to view your personal placements, Ascendant, and Hellenistic Sect team.*"
+            )
+            return "\n".join(sections)
+
+        return "Welcome to Placidus AI. Please enter your birth date, time, and location above to calculate your complete natal chart, or ask any question about astrological planets, houses, aspects, or Demetra George's Hellenistic doctrine."
 
     def _format_summary(self, intent: Intent, results: List[ToolResult]) -> str:
         """Format executive summary."""

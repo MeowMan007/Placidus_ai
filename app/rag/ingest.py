@@ -205,6 +205,8 @@ class EmbeddingEngine:
 class RAGRetriever:
     """
     Retrieves relevant chunks given a query, with citation metadata.
+    Uses hybrid scoring (TF-IDF vector similarity + astrological keyword density)
+    and filters out non-content metadata (author bios, indices, bibliographies).
     """
 
     def __init__(self, chunks: List[AstrologyChunk], embedder: EmbeddingEngine, top_k: int = 5):
@@ -212,32 +214,94 @@ class RAGRetriever:
         self.embedder = embedder
         self.top_k = top_k
 
+    @staticmethod
+    def _clean_text(text: str) -> str:
+        """Clean OCR artifacts, split words, and irregular spacing."""
+        t = re.sub(r'(\b\w)\s+(\w\b)', r'\1\2', text)  # fix split single letters
+        t = re.sub(r'\s+', ' ', t).strip()
+        # Common astrological OCR errors in this text
+        replacements = {
+            "af flicted": "afflicted", "af fliction": "affliction",
+            "co nducts": "conducts", "ef fective": "effective",
+            "dif ferent": "different", "dif ficulty": "difficulty",
+            "V enus": "Venus", "V ettius": "Vettius", "V alens": "Valens",
+            "fo rce": "force", "ha ve": "have", "w ith": "with",
+            "th ese": "these", "ten th": "tenth", "favour": "favor"
+        }
+        for k, v in replacements.items():
+            t = t.replace(k, v)
+        return t
+
     def retrieve(self, query: str, filter_chapter: Optional[str] = None) -> List[Dict]:
         """
-        Retrieve top-k chunks relevant to query.
-        Returns chunks with similarity scores and full citation metadata.
+        Retrieve top-k chunks relevant to query using hybrid scoring.
         """
+        query_lower = query.lower()
         query_vec = self.embedder.encode_query(query)
 
-        candidates = self.chunks
-        indices = list(range(len(candidates)))
-        if filter_chapter:
-            indices = [i for i, c in enumerate(candidates) if filter_chapter.lower() in c.chapter.lower()]
-            candidates = [candidates[i] for i in indices]
+        # Astrological keywords for targeted boost
+        vocab = [
+            "sun", "moon", "mercury", "venus", "mars", "jupiter", "saturn",
+            "uranus", "neptune", "pluto", "chiron", "north node", "south node",
+            "rahu", "ketu", "sect", "diurnal", "nocturnal", "benefic", "malefic",
+            "dignity", "domicile", "exaltation", "fall", "detriment", "peregrine",
+            "triplicity", "bound", "term", "decan", "lord", "ruler", "ascendant",
+            "midheaven", "career", "vocation", "profession", "tenth house", "10th house",
+            "seventh house", "7th house", "relationship", "marriage", "love",
+            "second house", "2nd house", "money", "wealth", "fortune", "spirit",
+            "lot of fortune", "lot of spirit", "house", "aspect", "trine", "square",
+            "sextile", "opposition", "conjunction", "combust", "retrograde"
+        ]
+
+        active_terms = [term for term in vocab if re.search(r'\b' + re.escape(term) + r'\b', query_lower)]
+
+        candidates = []
+        indices = []
+        for i, c in enumerate(self.chunks):
+            txt_lower = c.text.lower()
+            # Filter non-informative metadata chunks
+            if any(junk in txt_lower for junk in [
+                "about the author", "received the regulus award",
+                "table of contents", "bibliography", "isbn", "all rights reserved"
+            ]):
+                continue
+            if filter_chapter and filter_chapter.lower() not in c.chapter.lower():
+                continue
+            candidates.append(c)
+            indices.append(i)
 
         if not candidates:
             return []
 
         candidate_vectors = self.embedder.vectors[indices]
         similarities = cosine_similarity(query_vec, candidate_vectors)[0]
-        top_indices = np.argsort(similarities)[::-1][:self.top_k]
+
+        scored_candidates = []
+        for j, chunk in enumerate(candidates):
+            sim = float(similarities[j])
+            txt = chunk.text.lower()
+
+            # Keyword matching score
+            kw_score = 0.0
+            for term in active_terms:
+                count = len(re.findall(r'\b' + re.escape(term) + r'\b', txt))
+                if count > 0:
+                    kw_score += 0.25 + min(count * 0.1, 0.5)
+
+            # Combined hybrid score
+            total_score = (sim * 0.4) + (min(kw_score, 1.5) * 0.6)
+            scored_candidates.append((total_score, sim, chunk))
+
+        # Sort by hybrid score
+        scored_candidates.sort(key=lambda x: x[0], reverse=True)
+        top_items = scored_candidates[:self.top_k]
 
         results = []
-        for idx in top_indices:
-            chunk = candidates[idx]
-            score = float(similarities[idx])
+        for score, sim, chunk in top_items:
+            clean_chunk_dict = chunk.to_dict()
+            clean_chunk_dict["text"] = self._clean_text(chunk.text)
             results.append({
-                "chunk": chunk.to_dict(),
+                "chunk": clean_chunk_dict,
                 "score": round(score, 4),
                 "citation": f"{chunk.source}, {chunk.chapter}, p. {chunk.page}"
             })

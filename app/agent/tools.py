@@ -134,7 +134,7 @@ class RAGSearchTool:
             return ToolResult(
                 tool_name=self.name,
                 output={
-                    "citations": [c.dict() for c in citations],
+                    "citations": [c.model_dump() if hasattr(c, "model_dump") else c.dict() for c in citations],
                     "query": query,
                     "results_found": len(citations)
                 },
