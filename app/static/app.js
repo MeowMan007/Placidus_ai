@@ -760,12 +760,13 @@ async function submitCounselorQuery(message) {
     assistBubble.innerHTML = formattedText;
     chatHistory.push({ role: 'user', content: message });
     chatHistory.push({ role: 'assistant', content: data.message });
+    // Scroll smoothly to start of response so user can read from the beginning
+    assistBubble.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   } catch (err) {
     assistBubble.innerHTML = `<span style="color: #E06C75;">Consultation error: ${err.message || err}</span>`;
   } finally {
     isChatSending = false;
     if (btn) btn.disabled = false;
-    stream.scrollTop = stream.scrollHeight;
   }
 }
 
