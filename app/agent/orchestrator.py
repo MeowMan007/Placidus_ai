@@ -143,21 +143,50 @@ class IntentDetector:
     }
 
     def detect(self, message: str) -> Intent:
-        """Detect intent from user message."""
+        """Detect intent and entities from user message."""
         message_lower = message.lower()
         scores = {}
         entities = {"planets": [], "houses": [], "concepts": []}
 
-        # Extract entities
-        all_planets = ["sun", "moon", "mercury", "venus", "mars", 
-                       "jupiter", "saturn", "uranus", "neptune", "pluto",
-                       "chiron", "north node", "south node"]
-        for p in all_planets:
-            if p in message_lower:
-                entities["planets"].append(p.title())
+        # Extract planets with aliases
+        all_planets = [
+            ("north node", "North Node"), ("south node", "South Node"),
+            ("rahu", "North Node"), ("ketu", "South Node"),
+            ("sun", "Sun"), ("moon", "Moon"), ("mercury", "Mercury"), 
+            ("venus", "Venus"), ("mars", "Mars"), ("jupiter", "Jupiter"), 
+            ("saturn", "Saturn"), ("uranus", "Uranus"), ("neptune", "Neptune"), 
+            ("pluto", "Pluto"), ("chiron", "Chiron")
+        ]
+        for trigger, p_title in all_planets:
+            if re.search(r'\b' + re.escape(trigger) + r'\b', message_lower):
+                if p_title not in entities["planets"]:
+                    entities["planets"].append(p_title)
+
+        # Life domain & house mapping
+        domain_houses = [
+            (r'\b(career|job|vocation|profession|calling|boss|midheaven|mc)\b', 10),
+            (r'\b(relationship|relationships|love|marriage|partner|spouse|dating|seventh)\b', 7),
+            (r'\b(money|wealth|finance|finances|income|assets|second)\b', 2),
+            (r'\b(home|family|parents|mother|father|roots|domestic|fourth)\b', 4),
+            (r'\b(children|creative|creativity|romance|fun|hobbies|fifth)\b', 5),
+            (r'\b(health|illness|wellness|routine|daily work|habits|sixth)\b', 6),
+            (r'\b(shared money|debt|taxes|transformation|psychology|rebirth|eighth)\b', 8),
+            (r'\b(spirituality|philosophy|travel|higher learning|religion|ninth)\b', 9),
+            (r'\b(friends|friendship|community|groups|network|aspirations|eleventh)\b', 11),
+            (r'\b(unconscious|shadow|hidden|solitude|isolation|karma|dreams|twelfth)\b', 12),
+            (r'\b(identity|self|vitality|appearance|character|first house)\b', 1),
+            (r'\b(communication|writing|siblings|neighbors|intellect|third)\b', 3)
+        ]
+        for pattern, h_num in domain_houses:
+            if re.search(pattern, message_lower):
+                if h_num not in entities["houses"]:
+                    entities["houses"].append(h_num)
 
         house_nums = re.findall(r'(\d+)(?:st|nd|rd|th)?\s+house', message_lower)
-        entities["houses"] = [int(h) for h in house_nums]
+        for h in house_nums:
+            h_int = int(h)
+            if 1 <= h_int <= 12 and h_int not in entities["houses"]:
+                entities["houses"].append(h_int)
 
         # Score each intent
         for intent, patterns in self.PATTERNS.items():
@@ -167,6 +196,14 @@ class IntentDetector:
                 if matches:
                     score += len(matches) * 0.3
             scores[intent] = min(score, 1.0)
+
+        # If a planet was extracted, boost planet_interpretation
+        if entities["planets"] and scores.get("planet_interpretation", 0) < 0.7:
+            scores["planet_interpretation"] = 0.75
+
+        # If a house domain was extracted, boost houses
+        if entities["houses"] and scores.get("houses", 0) < 0.7:
+            scores["houses"] = 0.75
 
         # Default to general knowledge if no strong match
         if not scores or max(scores.values()) < 0.1:
@@ -314,27 +351,107 @@ class AstrologyAgent:
             confidence=intent.confidence
         )
 
+    def _build_full_chart_context(self) -> str:
+        """Serialize full chart data into a structured context block for LLM or synthesis."""
+        if not self.chart:
+            return "No birth chart provided. General astrological consultation mode."
+
+        lines = [
+            f"Native: {getattr(self.chart, 'name', 'Seeker')}",
+            f"Sect: {getattr(self.chart, 'sect', 'Diurnal')}",
+            f"Ascendant (ASC): {self._p_val(getattr(self.chart, 'ascendant', None), 'sign', 'Unknown')} {self._p_val(getattr(self.chart, 'ascendant', None), 'sign_degree', 0)}°",
+            f"Midheaven (MC): {self._p_val(getattr(self.chart, 'mc', None), 'sign', 'Unknown')} {self._p_val(getattr(self.chart, 'mc', None), 'sign_degree', 0)}°",
+            f"Lord of the Chart (Ascendant Ruler): {getattr(self.chart, 'ascendant_ruler', 'Unknown')}",
+            f"In-Sect Benefic: {getattr(self.chart, 'benefic_of_sect', 'Jupiter')}",
+            f"Contrary-to-Sect Malefic: {getattr(self.chart, 'malefic_of_sect', 'Saturn')}",
+            "Planetary Placements:"
+        ]
+
+        if hasattr(self.chart, "planets") and self.chart.planets:
+            for p in self.chart.planets:
+                name = self._p_val(p, "name")
+                sign = self._p_val(p, "sign")
+                deg = self._p_val(p, "sign_degree", 0)
+                minute = self._p_val(p, "sign_minute", 0)
+                house = self._p_val(p, "house", 0)
+                dignity = self._p_val(p, "dignity", "peregrine")
+                retro = " [Retrograde]" if self._p_val(p, "retrograde") else ""
+                lines.append(f"  - {name}: {sign} {deg}°{minute:02d}' in House {house} ({dignity}){retro}")
+
+        if hasattr(self.chart, "houses") and self.chart.houses:
+            lines.append("House Cusps (Placidus):")
+            for h in self.chart.houses:
+                num = self._p_val(h, "house_number")
+                sign = self._p_val(h, "sign")
+                deg = self._p_val(h, "sign_degree", 0)
+                minute = self._p_val(h, "sign_minute", 0)
+                ruler = self._p_val(h, "ruler", "")
+                ruler_str = f" (Ruler: {ruler})" if ruler else ""
+                lines.append(f"  - House {num}: {sign} {deg}°{minute:02d}'{ruler_str}")
+
+        if hasattr(self.chart, "aspects") and self.chart.aspects:
+            lines.append("Key Aspects:")
+            for a in self.chart.aspects[:10]:
+                p1 = self._p_val(a, "planet1")
+                asp = self._p_val(a, "aspect")
+                p2 = self._p_val(a, "planet2")
+                orb = self._p_val(a, "orb", 0.0)
+                lines.append(f"  - {p1} {asp} {p2} (orb {orb}°)")
+
+        return "\n".join(lines)
+
     def _generate_response(self, message: str, intent: Intent, 
                           tool_results: List[ToolResult], 
                           citations: List[Citation],
                           mode: str) -> str:
         """
-        Generate final response by combining tool outputs and RAG context.
-        In production, this prompts an LLM with structured context.
-        Here we use template-based generation with RAG augmentation.
+        Generate response via LLM if available, or through comprehensive Astrological Synthesis.
         """
-        # Build context from tool results
-        context_parts = []
-        for result in tool_results:
-            if result.success:
-                context_parts.append(f"[{result.tool_name}]\n{json.dumps(result.output, indent=2)}")
+        # 1. Attempt live LLM generation if configured
+        if self.llm is not None:
+            from app.core.llm_client import FallbackLLMClient, LLMMessage
+            if not isinstance(self.llm, FallbackLLMClient):
+                try:
+                    chart_ctx = self._build_full_chart_context()
+                    rag_ctx = "\n\n".join([f"[{c.source} | {c.chapter}]:\n{c.text}" for c in citations[:4]])
+                    sys_prompt = f"""You are Placidus AI, an elite Hellenistic and Traditional Astrological Counselor trained in the lineage of Demetra George, Vettius Valens, and Claudius Ptolemy.
 
-        # Build knowledge context from RAG
-        knowledge_parts = []
-        for c in citations[:3]:
-            knowledge_parts.append(f"From {c.source}, {c.chapter}: {c.text[:200]}...")
+NATIVE BIRTH CHART DATA:
+{chart_ctx}
 
-        # Traditional Hellenistic & Demetra George specialized routes
+AUTHENTIC DEMETRA GEORGE SOURCE TEXTS & CLASSICAL DOCTRINE:
+{rag_ctx}
+
+INSTRUCTIONS:
+1. Address the seeker's inquiry directly with astrological depth, empathy, and technical accuracy.
+2. Ground your reading in the native's ACTUAL planetary placements, exact degrees, houses, essential dignities, sect status, and aspects.
+3. Apply Demetra George's authentic psychological framework (the Authentic Self, somatic grounding, optical aspects, and Hellenistic shadow integration).
+4. Structure your response with clean markdown headers and bullet points. Never give generic horoscope generalities."""
+
+                    resp = self.llm.generate([
+                        LLMMessage(role="system", content=sys_prompt),
+                        LLMMessage(role="user", content=message)
+                    ], temperature=0.7, max_tokens=1500)
+                    if resp and resp.content and len(resp.content.strip()) > 30:
+                        return resp.content.strip()
+                except Exception as e:
+                    import logging
+                    logging.getLogger("astroai").warning(f"Live LLM call error: {e}. Switching to native synthesis.")
+
+        # 2. Astrological Synthesis Engine
+        return self._astrological_synthesis(message, intent, tool_results, citations, mode)
+
+    def _astrological_synthesis(self, message: str, intent: Intent, 
+                               tool_results: List[ToolResult], 
+                               citations: List[Citation],
+                               mode: str) -> str:
+        """
+        Synthesizes an intelligent, personalized astrological reading
+        using native chart parameters and Demetra George classical knowledge.
+        """
+        knowledge_parts = [f"From {c.source}, {c.chapter}: {c.text[:220]}..." for c in citations[:3]]
+
+        # Hellenistic specialized routes
         if intent.primary == "sect" and self.chart:
             return self._format_sect(knowledge_parts)
         elif intent.primary == "lord_of_chart" and self.chart:
@@ -345,82 +462,158 @@ class AstrologyAgent:
             return self._format_nodes(knowledge_parts)
         elif intent.primary == "luminaries" and self.chart:
             return self._format_luminaries(knowledge_parts)
-
-        # Template-based response generation
-        # In production, this is replaced with LLM generation
-        if mode == "table":
-            return self._format_table(intent, tool_results, knowledge_parts)
-        elif mode == "detailed":
-            return self._format_detailed(intent, tool_results, knowledge_parts)
-        elif mode == "summary":
-            return self._format_summary(intent, tool_results)
-        elif mode == "comparison":
+        elif intent.primary == "comparison" and len(intent.entities["planets"]) >= 2:
             return self._format_comparison(intent, tool_results)
-        elif mode == "cards":
+        elif intent.primary == "strengths":
             return self._format_cards(intent, tool_results)
-        else:
-            return self._format_detailed(intent, tool_results, knowledge_parts)
 
-    def _format_table(self, intent: Intent, results: List[ToolResult], knowledge: Optional[List[str]] = None) -> str:
-        """Format response as markdown table."""
-        for r in results:
-            if r.tool_name == "planet_interpretation" and r.success:
-                p = r.output
-                return f"""## {p['planet']} Placement
+        # Planet-focused inquiry
+        if intent.entities["planets"] and self.chart:
+            sections = []
+            for p_name in intent.entities["planets"]:
+                p = self._get_planet(p_name)
+                if not p:
+                    continue
+                sign = self._p_val(p, "sign", "Unknown")
+                deg = int(self._p_val(p, "sign_degree", 0))
+                minute = int(self._p_val(p, "sign_minute", 0))
+                house = self._p_val(p, "house", 1)
+                dignity = self._p_val(p, "dignity", "peregrine")
+                retro = self._p_val(p, "retrograde", False)
+                nakshatra = self._p_val(p, "nakshatra", "")
+                
+                # Aspects to this planet
+                aspects_found = []
+                if hasattr(self.chart, "aspects") and self.chart.aspects:
+                    for a in self.chart.aspects:
+                        p1 = self._p_val(a, "planet1")
+                        p2 = self._p_val(a, "planet2")
+                        asp = self._p_val(a, "aspect")
+                        orb = self._p_val(a, "orb", 0.0)
+                        if p1.lower() == p_name.lower():
+                            aspects_found.append(f"{asp.title()} with **{p2}** (orb {orb}°)")
+                        elif p2.lower() == p_name.lower():
+                            aspects_found.append(f"{asp.title()} with **{p1}** (orb {orb}°)")
 
-| Attribute | Value |
-|-----------|-------|
-| Sign | {p['sign_expression']} |
-| Degree | {p['position']} |
-| House | {p['house']} |
-| Dignity | {p['dignity']} |
-| Retrograde | {'Yes' if p['retrograde'] else 'No'} |
-| Nakshatra | {p['nakshatra']} |
-| Core Meaning | {p['core_meaning']} |
-| House Significance | {p['house_significance']} |
-| Dignity Assessment | {p['dignity_assessment']} |
-"""
-        return self._format_detailed(intent, results, knowledge or [])
+                aspects_str = ", ".join(aspects_found) if aspects_found else "Operates without major hard aspects"
+                retro_str = " *(in Retrograde motion — invites deep introspective mastery)*" if retro else ""
+                
+                sect = getattr(self.chart, "sect", "Diurnal")
+                is_day = "diurnal" in sect.lower() or "day" in sect.lower()
+                benefic = getattr(self.chart, "benefic_of_sect", "Jupiter")
+                malefic = getattr(self.chart, "malefic_of_sect", "Saturn")
 
-    def _format_detailed(self, intent: Intent, results: List[ToolResult], 
-                        knowledge: List[str]) -> str:
-        """Format detailed interpretive response."""
-        sections = []
+                sect_commentary = ""
+                if p_name.lower() == benefic.lower():
+                    sect_commentary = f"**Sect Ally:** As your in-sect benefic in a {sect}, {p_name} is your primary cosmological guardian and source of effortless grace."
+                elif p_name.lower() == malefic.lower():
+                    sect_commentary = f"**Constructive Challenge:** As the contrary-to-sect malefic in your {sect}, {p_name} represents your crucible of initiation, demanding maturity and steady craftsmanship."
+                elif p_name.lower() in ["sun", "moon"]:
+                    sect_commentary = f"**Luminary Status:** Operating as the foundational light of your {sect}, directing vital soul purpose."
+                else:
+                    sect_commentary = f"**Planetary Function:** Operating within your {sect} to channel {sign} qualities through House {house}."
 
-        for r in results:
-            if r.tool_name == "planet_interpretation" and r.success:
-                p = r.output
-                sections.append(f"""### {p['planet']} in {p['position']} (House {p['house']})
+                sections.append(f"""### {p_name} in {sign} ({deg}°{minute:02d}') — House {house}{retro_str}
 
-**Core Archetype:** {p['core_meaning']}
+- **Essential Dignity:** **{str(dignity).upper()}**
+- **Arena of Manifestation:** House {house} ({self._house_topic(house)})
+- **Vedic Lunar Mansion:** {nakshatra}
+- **Aspect Networks:** {aspects_str}
 
-**Sign Expression:** {p['sign_expression']}
+**Hellenistic Condition & Sect Role:**
+{sect_commentary}
 
-**House Domain:** {p['house_significance']}
-
-**Dignity Status:** {p['dignity']} — {p['dignity_assessment']}
-
-**Vedic Indicator:** {p['nakshatra']}
-
-**Aspects:** {len(p['aspects_to_planet'])} major aspect(s) configured.
+**Psychological & Archetypal Significance:**
+In {sign}, **{p_name}** expresses its archetype through the element of {sign}. Stationed in your **{self._ordinal(house)} House**, you are challenged to consciously anchor this energy in matters of {self._house_topic(house)}. When dignified or integrated, this placement becomes a cornerstone of personal wisdom and inner resilience.
 """)
-            elif r.tool_name == "rag_search" and r.success:
-                if knowledge:
-                    sections.append("### Traditional Teachings\n")
-                    for k in knowledge[:2]:
-                        sections.append(f"> {k}\n")
+            if citations:
+                sections.append("### Demetra George Classical Knowledge\n")
+                for c in citations[:2]:
+                    sections.append(f"> *\"{c.text[:220]}...\"* — **{c.source}** ({c.chapter})\n")
 
-        if not sections:
-            if knowledge:
+            return "\n".join(sections)
+
+        # House-focused inquiry
+        if intent.entities["houses"] and self.chart:
+            sections = []
+            for h_num in intent.entities["houses"]:
+                h = None
+                if hasattr(self.chart, "houses") and self.chart.houses:
+                    for house_obj in self.chart.houses:
+                        if self._p_val(house_obj, "house_number") == h_num:
+                            h = house_obj
+                            break
+                h_sign = self._p_val(h, "sign", "Unknown") if h else "Unknown"
+                h_deg = self._p_val(h, "sign_degree", 0) if h else 0
+                h_ruler = self._p_val(h, "ruler", "Unknown") if h else "Unknown"
+
+                # Check planets inside this house
+                planets_in_h = []
+                if hasattr(self.chart, "planets") and self.chart.planets:
+                    for p in self.chart.planets:
+                        if self._p_val(p, "house") == h_num:
+                            planets_in_h.append(f"**{self._p_val(p, 'name')}** in {self._p_val(p, 'sign')} ({self._p_val(p, 'sign_degree', 0)}°)")
+
+                planets_str = ", ".join(planets_in_h) if planets_in_h else "No natal planets occupy this house directly (governed through its ruler)"
+
+                # Ruler location
+                ruler_p = self._get_planet(h_ruler)
+                ruler_loc = f"{self._p_val(ruler_p, 'sign')} in House {self._p_val(ruler_p, 'house')}" if ruler_p else "in the natal wheel"
+
+                sections.append(f"""### The {self._ordinal(h_num)} House: {self._house_topic(h_num).title()}
+
+- **House Cusp:** {h_sign} at {h_deg:.1f}°
+- **Planetary Ruler (Lord of House):** **{h_ruler}**, positioned in {ruler_loc}
+- **Occupants:** {planets_str}
+
+**Hellenistic Synthesis:**
+In classical astrology, the affairs of the **{self._ordinal(h_num)} House** ({self._house_topic(h_num)}) take on the character of **{h_sign}**. Because its lord, **{h_ruler}**, is stationed in {ruler_loc}, the outcomes and developments of your {self._ordinal(h_num)} house are directly channeled through that area of your life.
+""")
+            if citations:
                 sections.append("### Traditional Teachings\n")
-                for k in knowledge[:3]:
-                    sections.append(f"> {k}\n")
-            elif not self.chart:
-                sections.append("To analyze your specific birth chart placements, please generate your natal chart first on the Chart tab. You can also ask any general questions about zodiac signs, planets, houses, and astrological concepts.")
-            else:
-                sections.append("I've analyzed your chart. Please ask a more specific question for detailed interpretation.")
+                for c in citations[:2]:
+                    sections.append(f"> *\"{c.text[:220]}...\"* — **{c.source}** ({c.chapter})\n")
+            return "\n".join(sections)
 
-        return "\n".join(sections)
+        # General chart overview & executive consultation
+        if self.chart:
+            sun = self._get_planet("Sun")
+            moon = self._get_planet("Moon")
+            ruler = getattr(self.chart, "ascendant_ruler", "Sun")
+            lord_p = self._get_planet(ruler)
+            asc = getattr(self.chart, "ascendant", None)
+            sect = getattr(self.chart, "sect", "Diurnal")
+
+            sun_str = f"{self._p_val(sun, 'sign')} {self._p_val(sun, 'sign_degree', 0)}° (House {self._p_val(sun, 'house')})" if sun else "Active"
+            moon_str = f"{self._p_val(moon, 'sign')} {self._p_val(moon, 'sign_degree', 0)}° (House {self._p_val(moon, 'house')})" if moon else "Active"
+            asc_str = f"{self._p_val(asc, 'sign', 'Aquarius')} {self._p_val(asc, 'sign_degree', 0):.1f}°" if asc else "Active"
+            lord_str = f"**{ruler}** in {self._p_val(lord_p, 'sign')} House {self._p_val(lord_p, 'house')}" if lord_p else ruler
+
+            res = f"""## Natal Chart Analysis & Evolutionary Guidance
+
+### 1. The Core Triad (Ascendant, Sun & Moon)
+- **Ascendant (Rising Sign):** {asc_str} — Your physical vehicle, primary interface with the world, and incarnational lens.
+- **Sun (Solar Vitality):** {sun_str} — Your conscious purpose, vocational radiance, and life vision.
+- **Moon (Lunar Foundation):** {moon_str} — Your somatic emotional needs, instinctual roots, and inner safety.
+
+### 2. Lord of the Chart (*Captain of the Ship*)
+Your chart is steered by **{lord_str}**. As the helmsman of your incarnation, your life energy and evolutionary growth naturally flow toward {self._house_topic(self._p_val(lord_p, 'house', 1))}.
+
+### 3. Hellenistic Sect: {sect}
+Operating in a **{sect}**, your primary in-sect ally is **{getattr(self.chart, 'benefic_of_sect', 'Jupiter')}**, while **{getattr(self.chart, 'malefic_of_sect', 'Saturn')}** marks the arena of conscious shadow mastery and dedicated craftsmanship.
+
+---
+### Demetra George Classical Wisdom
+> *"A chart is not a static sentence of fate, but a sacred map of psychological potential and soul evolution. By understanding which planets act as allies and which call for discipline, we cultivate our authentic self."*
+"""
+            if citations:
+                res += "\n**Manuscript References:**\n"
+                for c in citations[:2]:
+                    res += f"> *\"{c.text[:200]}...\"* — **{c.source}**\n"
+            return res
+
+        # Fallback when no chart is calculated yet
+        return "To analyze your specific birth chart placements, please calculate your chart first using your date, time, and birthplace on the Chart tab. You can also ask any questions about astrological signs, houses, aspects, or Demetra George's Hellenistic teachings."
 
     def _format_summary(self, intent: Intent, results: List[ToolResult]) -> str:
         """Format executive summary."""

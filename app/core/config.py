@@ -5,8 +5,8 @@ from pydantic_settings import BaseSettings
 from functools import lru_cache
 
 class Settings(BaseSettings):
-    APP_NAME: str = "Placidus AI Observatory"
-    APP_VERSION: str = "2.0.0"
+    APP_NAME: str = "AstroAI Platform"
+    APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
 
     # API
@@ -22,15 +22,20 @@ class Settings(BaseSettings):
     CHUNK_OVERLAP: int = 128
     TOP_K_RETRIEVAL: int = 5
 
-    # LLM Provider — set LLM_PROVIDER=huggingface and add your HUGGINGFACE_API_KEY
-    LLM_PROVIDER: str = "huggingface"  # options: openai, huggingface, local, fallback
+    # LLM (supports: openai, huggingface, gemini, groq, fallback)
+    LLM_PROVIDER: str = "fallback"
     OPENAI_API_KEY: str = ""
-    HUGGINGFACE_API_KEY: str = ""  # Required: get free key at huggingface.co/settings/tokens
+    HUGGINGFACE_API_KEY: str = ""
     HUGGINGFACE_MODEL: str = "mistralai/Mistral-7B-Instruct-v0.2"
+    GEMINI_API_KEY: str = ""
+    GROQ_API_KEY: str = ""
+    GROQ_MODEL: str = "llama-3.1-8b-instant"
 
-    # Render Keep-Alive (set this to your Render app URL to prevent sleep)
-    RENDER_URL: str = ""  # e.g. https://placidus-ai.onrender.com
-    KEEP_ALIVE_INTERVAL_MINUTES: int = 14  # Render free tier sleeps at 15 min
+    # Database
+    DATABASE_URL: str = "postgresql://astro:astro@localhost:5432/astroai"
+
+    # Redis
+    REDIS_URL: str = "redis://localhost:6379"
 
     # Swiss Ephemeris
     EPHE_PATH: str = "data/ephemeris"

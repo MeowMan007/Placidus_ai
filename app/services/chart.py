@@ -80,13 +80,14 @@ class ChartEngine:
         Returns:
             Complete ChartData object
         """
-        # Convert local time to UT
-        ut_hour = birth_datetime.hour + birth_datetime.minute/60.0 + birth_datetime.second/3600.0
-        ut_hour -= geo.timezone_offset
+        # Convert local time to UTC
+        from datetime import timedelta
+        utc_datetime = birth_datetime - timedelta(hours=geo.timezone_offset)
+        ut_hour = utc_datetime.hour + utc_datetime.minute / 60.0 + utc_datetime.second / 3600.0
 
         # Julian Day in UT
         jd = self.math.julian_day(
-            birth_datetime.year, birth_datetime.month, birth_datetime.day, ut_hour
+            utc_datetime.year, utc_datetime.month, utc_datetime.day, ut_hour
         )
 
         # Local Sidereal Time
@@ -106,36 +107,21 @@ class ChartEngine:
                 sign_minute=minute
             ))
 
-        # Calculate planets
+        # Calculate planets with high precision
         planets = []
-        for planet_name in self.PLANET_ORDER[:10]:  # Classical + modern
-            planet = self.math.calculate_planet(planet_name, jd, geo)
+        for planet_name in self.PLANET_ORDER[:10]:  # Sun, Moon, Mercury, Venus, Mars, Jupiter, Saturn, Uranus, Neptune, Pluto
+            planet = self.math.calculate_planet(planet_name, jd, geo, utc_datetime)
             planets.append(planet)
 
-        # Add North Node (simplified calculation)
-        moon = next(p for p in planets if p.name == "Moon")
-        sun = next(p for p in planets if p.name == "Sun")
-        # Mean node approximation: opposite of Moon's ascending node
-        node_long = (moon.longitude - 180.0) % 360.0  # Simplified
-        sign, deg, minute = self.math.longitude_to_sign(node_long)
-        nakshatra, pada = self.math.get_nakshatra(node_long)
-        planets.append(PlanetPosition(
-            name="North Node", longitude=node_long, latitude=0.0,
-            distance=1.0, speed=0.05, retrograde=True,
-            sign=sign, sign_degree=deg, sign_minute=minute,
-            house=0, nakshatra=nakshatra, pada=pada, dignity="peregrine"
-        ))
+        # Add North Node (Rahu) and South Node (Ketu)
+        north_node = self.math.calculate_planet("North Node", jd, geo, utc_datetime)
+        south_node = self.math.calculate_planet("South Node", jd, geo, utc_datetime)
+        planets.append(north_node)
+        planets.append(south_node)
 
-        # South Node
-        south_long = (node_long + 180.0) % 360.0
-        sign, deg, minute = self.math.longitude_to_sign(south_long)
-        nakshatra, pada = self.math.get_nakshatra(south_long)
-        planets.append(PlanetPosition(
-            name="South Node", longitude=south_long, latitude=0.0,
-            distance=1.0, speed=0.05, retrograde=True,
-            sign=sign, sign_degree=deg, sign_minute=minute,
-            house=0, nakshatra=nakshatra, pada=pada, dignity="peregrine"
-        ))
+        # Add Chiron
+        chiron = self.math.calculate_planet("Chiron", jd, geo, utc_datetime)
+        planets.append(chiron)
 
         # Assign houses
         self.math.assign_houses(planets, cusp_longitudes)
@@ -151,6 +137,8 @@ class ChartEngine:
         patterns = self._detect_patterns(planets, aspects, cusp_longitudes)
 
         # Hellenistic Sect & Lord of Chart
+        sun = next(p for p in planets if p.name == "Sun")
+        moon = next(p for p in planets if p.name == "Moon")
         is_diurnal = sun.house in [7, 8, 9, 10, 11, 12]
         sect = "Diurnal (Day Chart)" if is_diurnal else "Nocturnal (Night Chart)"
         asc_sign = houses[0].sign

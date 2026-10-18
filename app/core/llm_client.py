@@ -1,15 +1,18 @@
 """
 LLM Client Abstraction
-Supports multiple providers: OpenAI, HuggingFace Inference API, local models.
-Falls back to template-based generation when no API keys are configured.
+Supports multiple providers: Google Gemini (Free), Groq (Free fast), OpenAI, Hugging Face, or local models.
+Provides intelligent fallback when external APIs are unconfigured or hit rate limits.
 """
 import os
 import json
+import logging
 from typing import List, Dict, Optional, Generator
 from dataclasses import dataclass
 import httpx
 
 from app.core.config import get_settings
+
+logger = logging.getLogger("astroai.llm")
 
 
 @dataclass
@@ -30,24 +33,106 @@ class BaseLLMClient:
     """Abstract base for LLM providers."""
 
     def generate(self, messages: List[LLMMessage], temperature: float = 0.7, 
-                 max_tokens: int = 2000) -> LLMResponse:
+                 max_tokens: int = 1500) -> LLMResponse:
         raise NotImplementedError
 
-    def generate_stream(self, messages: List[LLMMessage], temperature: float = 0.7,
-                        max_tokens: int = 2000) -> Generator[str, None, None]:
-        raise NotImplementedError
+
+class GeminiClient(BaseLLMClient):
+    """Google Gemini API client (supports free tier gemini-1.5-flash / gemini-2.0-flash)."""
+
+    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-1.5-flash"):
+        self.api_key = api_key or os.getenv("GEMINI_API_KEY")
+        self.model = model
+        self.base_url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+
+    def generate(self, messages: List[LLMMessage], temperature: float = 0.7,
+                 max_tokens: int = 1500) -> LLMResponse:
+        if not self.api_key:
+            raise RuntimeError("Gemini API key not configured")
+
+        contents = []
+        system_instruction = None
+        for m in messages:
+            if m.role == "system":
+                system_instruction = {"parts": [{"text": m.content}]}
+            else:
+                role = "user" if m.role == "user" else "model"
+                contents.append({"role": role, "parts": [{"text": m.content}]})
+
+        payload = {
+            "contents": contents,
+            "generationConfig": {
+                "temperature": temperature,
+                "maxOutputTokens": max_tokens
+            }
+        }
+        if system_instruction:
+            payload["systemInstruction"] = system_instruction
+
+        response = httpx.post(
+            f"{self.base_url}?key={self.api_key}",
+            json=payload,
+            headers={"Content-Type": "application/json"},
+            timeout=45.0
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        text = ""
+        candidates = data.get("candidates", [])
+        if candidates:
+            parts = candidates[0].get("content", {}).get("parts", [])
+            if parts:
+                text = parts[0].get("text", "")
+
+        return LLMResponse(content=text, model=self.model)
+
+
+class GroqClient(BaseLLMClient):
+    """Groq API client (ultra-fast free tier)."""
+
+    def __init__(self, api_key: Optional[str] = None, model: str = "llama-3.1-8b-instant"):
+        self.api_key = api_key or os.getenv("GROQ_API_KEY")
+        self.model = model
+        self.base_url = "https://api.groq.com/openai/v1/chat/completions"
+
+    def generate(self, messages: List[LLMMessage], temperature: float = 0.7,
+                 max_tokens: int = 1500) -> LLMResponse:
+        if not self.api_key:
+            raise RuntimeError("Groq API key not configured")
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": self.model,
+            "messages": [{"role": m.role, "content": m.content} for m in messages],
+            "temperature": temperature,
+            "max_tokens": max_tokens
+        }
+
+        response = httpx.post(self.base_url, headers=headers, json=payload, timeout=30.0)
+        response.raise_for_status()
+        data = response.json()
+
+        return LLMResponse(
+            content=data["choices"][0]["message"]["content"],
+            tokens_used=data.get("usage", {}).get("total_tokens", 0),
+            model=self.model
+        )
 
 
 class OpenAIClient(BaseLLMClient):
     """OpenAI GPT-4 / GPT-3.5 client."""
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "gpt-4"):
+    def __init__(self, api_key: Optional[str] = None, model: str = "gpt-4o-mini"):
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         self.model = model
         self.base_url = "https://api.openai.com/v1"
 
     def generate(self, messages: List[LLMMessage], temperature: float = 0.7,
-                 max_tokens: int = 2000) -> LLMResponse:
+                 max_tokens: int = 1500) -> LLMResponse:
         if not self.api_key:
             raise RuntimeError("OpenAI API key not configured")
 
@@ -55,7 +140,6 @@ class OpenAIClient(BaseLLMClient):
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
-
         payload = {
             "model": self.model,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
@@ -67,7 +151,7 @@ class OpenAIClient(BaseLLMClient):
             f"{self.base_url}/chat/completions",
             headers=headers,
             json=payload,
-            timeout=60.0
+            timeout=45.0
         )
         response.raise_for_status()
         data = response.json()
@@ -78,45 +162,6 @@ class OpenAIClient(BaseLLMClient):
             model=self.model
         )
 
-    def generate_stream(self, messages: List[LLMMessage], temperature: float = 0.7,
-                        max_tokens: int = 2000) -> Generator[str, None, None]:
-        if not self.api_key:
-            raise RuntimeError("OpenAI API key not configured")
-
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
-
-        payload = {
-            "model": self.model,
-            "messages": [{"role": m.role, "content": m.content} for m in messages],
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            "stream": True
-        }
-
-        with httpx.stream(
-            "POST",
-            f"{self.base_url}/chat/completions",
-            headers=headers,
-            json=payload,
-            timeout=60.0
-        ) as response:
-            response.raise_for_status()
-            for line in response.iter_lines():
-                if line.startswith("data: "):
-                    data = line[6:]
-                    if data == "[DONE]":
-                        break
-                    try:
-                        chunk = json.loads(data)
-                        delta = chunk["choices"][0]["delta"].get("content", "")
-                        if delta:
-                            yield delta
-                    except (json.JSONDecodeError, KeyError):
-                        continue
-
 
 class HuggingFaceClient(BaseLLMClient):
     """HuggingFace Inference API client."""
@@ -125,119 +170,91 @@ class HuggingFaceClient(BaseLLMClient):
                  model: str = "mistralai/Mistral-7B-Instruct-v0.2"):
         self.api_key = api_key or os.getenv("HUGGINGFACE_API_KEY")
         self.model = model
-        self.base_url = f"https://api-inference.huggingface.co/models/{model}"
 
     def generate(self, messages: List[LLMMessage], temperature: float = 0.7,
-                 max_tokens: int = 2000) -> LLMResponse:
+                 max_tokens: int = 1500) -> LLMResponse:
         if not self.api_key:
             raise RuntimeError("HuggingFace API key not configured")
 
-        # Convert messages to prompt
-        prompt = self._messages_to_prompt(messages)
-
-        headers = {"Authorization": f"Bearer {self.api_key}"}
-        payload = {
-            "inputs": prompt,
-            "parameters": {
-                "temperature": temperature,
-                "max_new_tokens": max_tokens,
-                "return_full_text": False
-            }
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
         }
 
-        response = httpx.post(
-            self.base_url,
-            headers=headers,
-            json=payload,
-            timeout=120.0
-        )
-        response.raise_for_status()
-        data = response.json()
+        # Try Hugging Face modern router
+        router_url = "https://router.huggingface.co/v1/chat/completions"
+        payload = {
+            "model": self.model,
+            "messages": [{"role": m.role, "content": m.content} for m in messages],
+            "temperature": temperature,
+            "max_tokens": max_tokens
+        }
 
-        if isinstance(data, list) and len(data) > 0:
-            text = data[0].get("generated_text", "")
-        else:
-            text = str(data)
-
-        return LLMResponse(content=text, model=self.model)
-
-    def _messages_to_prompt(self, messages: List[LLMMessage]) -> str:
-        """Convert chat messages to Mistral instruction format."""
-        prompt_parts = []
-        for m in messages:
-            if m.role == "system":
-                prompt_parts.append(f"<s>[INST] {m.content} [/INST]")
-            elif m.role == "user":
-                prompt_parts.append(f"[INST] {m.content} [/INST]")
+        try:
+            response = httpx.post(router_url, headers=headers, json=payload, timeout=40.0)
+            if response.status_code == 200:
+                data = response.json()
+                content = data["choices"][0]["message"]["content"]
+                return LLMResponse(content=content, model=self.model)
             else:
-                prompt_parts.append(f" {m.content}</s>")
-        return "
-".join(prompt_parts)
+                logger.warning(f"HF router returned {response.status_code}: {response.text[:120]}")
+        except Exception as e:
+            logger.warning(f"HF router error: {e}")
 
+        # Try direct inference endpoint
+        direct_url = f"https://router.huggingface.co/hf-inference/models/{self.model}"
+        prompt = "\n".join([f"{m.role.upper()}: {m.content}" for m in messages])
+        try:
+            r = httpx.post(
+                direct_url,
+                headers=headers,
+                json={"inputs": prompt, "parameters": {"max_new_tokens": max_tokens, "temperature": temperature}},
+                timeout=40.0
+            )
+            if r.status_code == 200:
+                res = r.json()
+                if isinstance(res, list) and res:
+                    return LLMResponse(content=res[0].get("generated_text", ""), model=self.model)
+                elif isinstance(res, dict) and "generated_text" in res:
+                    return LLMResponse(content=res["generated_text"], model=self.model)
+        except Exception as e:
+            logger.warning(f"HF direct endpoint error: {e}")
 
-class LocalLLMClient(BaseLLMClient):
-    """Local model via llama.cpp or similar local server."""
-
-    def __init__(self, base_url: str = "http://localhost:8080"):
-        self.base_url = base_url
-
-    def generate(self, messages: List[LLMMessage], temperature: float = 0.7,
-                 max_tokens: int = 2000) -> LLMResponse:
-        prompt = "
-".join([f"{m.role}: {m.content}" for m in messages])
-
-        response = httpx.post(
-            f"{self.base_url}/completion",
-            json={
-                "prompt": prompt,
-                "temperature": temperature,
-                "n_predict": max_tokens
-            },
-            timeout=120.0
-        )
-        response.raise_for_status()
-        data = response.json()
-
-        return LLMResponse(
-            content=data.get("content", ""),
-            model="local"
-        )
+        raise RuntimeError(f"Hugging Face Inference call failed for model {self.model}")
 
 
 class FallbackLLMClient(BaseLLMClient):
     """
-    Fallback client that uses template-based generation.
-    Used when no external LLM is configured.
+    Fallback client signalling that native astrological synthesis should run.
     """
 
     def generate(self, messages: List[LLMMessage], temperature: float = 0.7,
-                 max_tokens: int = 2000) -> LLMResponse:
-        # Return the last user message as a signal that fallback is active
-        user_msg = next((m.content for m in reversed(messages) if m.role == "user"), "")
-        return LLMResponse(
-            content=f"[Fallback Mode] Query received: {user_msg[:100]}...\n\n"
-                    "Configure OPENAI_API_KEY or HUGGINGFACE_API_KEY for AI-generated responses.",
-            model="fallback"
-        )
-
-    def generate_stream(self, messages: List[LLMMessage], temperature: float = 0.7,
-                        max_tokens: int = 2000) -> Generator[str, None, None]:
-        yield "[Fallback Mode] "
-        yield "Configure an LLM provider to enable streaming responses."
+                 max_tokens: int = 1500) -> LLMResponse:
+        return LLMResponse(content="", model="synthesis")
 
 
 def get_llm_client() -> BaseLLMClient:
     """Factory function to get the appropriate LLM client."""
     settings = get_settings()
 
-    if settings.LLM_PROVIDER == "openai" and settings.OPENAI_API_KEY:
+    # Priority 1: Google Gemini (Free & highly capable)
+    if settings.GEMINI_API_KEY:
+        return GeminiClient(api_key=settings.GEMINI_API_KEY)
+
+    # Priority 2: Groq (Free & fast)
+    if settings.GROQ_API_KEY:
+        return GroqClient(api_key=settings.GROQ_API_KEY, model=settings.GROQ_MODEL)
+
+    # Priority 3: OpenAI
+    if settings.OPENAI_API_KEY and settings.LLM_PROVIDER in ["openai", "fallback"]:
         return OpenAIClient(api_key=settings.OPENAI_API_KEY)
-    elif settings.LLM_PROVIDER == "huggingface" and settings.HUGGINGFACE_API_KEY:
+
+    # Priority 4: Hugging Face
+    if settings.HUGGINGFACE_API_KEY and settings.LLM_PROVIDER in ["huggingface", "fallback"]:
         return HuggingFaceClient(
             api_key=settings.HUGGINGFACE_API_KEY,
             model=settings.HUGGINGFACE_MODEL
         )
-    elif settings.LLM_PROVIDER == "local":
-        return LocalLLMClient()
-    else:
-        return FallbackLLMClient()
+
+    # Fallback to astrological synthesis engine
+    return FallbackLLMClient()

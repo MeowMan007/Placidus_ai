@@ -9,4 +9,5 @@ numpy>=1.26.4
 scikit-learn>=1.4.0
 PyPDF2>=3.0.1
 httpx>=0.26.0
-
+ephem>=4.2
+python-dotenv>=1.0.0

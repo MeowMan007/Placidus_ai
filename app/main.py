@@ -5,7 +5,6 @@ Production-ready API for Placidus natal chart generation and AI astrological ana
 import os
 import sys
 import uuid
-import asyncio
 from datetime import datetime
 from typing import Optional, List
 from contextlib import asynccontextmanager
@@ -34,6 +33,7 @@ from app.models.schemas import (
 from app.services.chart import ChartEngine, GeoLocation
 from app.services.geo import geocode_query, detect_timezone
 from app.agent.orchestrator import AstrologyAgent
+from app.core.llm_client import get_llm_client
 
 # Security
 security = HTTPBearer(auto_error=False)
@@ -56,7 +56,7 @@ async def lifespan(app: FastAPI):
     chunks_path = os.path.join(vectorstore_path, "chunks.json")
     embedder_path = os.path.join(vectorstore_path, "embedder.pkl")
 
-    if os.path.exists(chunks_path):
+    if os.path.exists(chunks_path) and os.path.exists(embedder_path):
         try:
             from app.rag.ingest import DocumentIngestion, EmbeddingEngine, RAGRetriever
 
@@ -64,63 +64,19 @@ async def lifespan(app: FastAPI):
             ingest.load_chunks(chunks_path)
 
             embedder = EmbeddingEngine()
-
-            # Try loading pre-built pkl first (fast path)
-            pkl_loaded = False
-            if os.path.exists(embedder_path):
-                try:
-                    embedder.load(embedder_path)
-                    pkl_loaded = True
-                    print(f"[OK] Loaded pre-built embedder ({len(ingest.chunks)} chunks)")
-                except Exception as pkl_err:
-                    print(f"[WARN] embedder.pkl version mismatch: {pkl_err}")
-                    print("[INFO] Rebuilding TF-IDF embedder from chunks.json...")
-
-            # Rebuild if pkl missing or incompatible (takes ~10s on free tier)
-            if not pkl_loaded:
-                print(f"[INFO] Building embedder from {len(ingest.chunks)} chunks...")
-                embedder.fit(ingest.chunks)
-                os.makedirs(vectorstore_path, exist_ok=True)
-                embedder.save(embedder_path)
-                print(f"[OK] Embedder built and cached at {embedder_path}")
+            embedder.load(embedder_path)
 
             rag_retriever = RAGRetriever(ingest.chunks, embedder, top_k=5)
-            print(f"[OK] RAG knowledge base ready — {len(ingest.chunks)} chunks indexed")
+            print(f"[OK] Loaded RAG vector store with {len(ingest.chunks)} chunks")
         except Exception as e:
-            print(f"[WARN] RAG initialisation failed: {e}")
+            print(f"[WARN] Could not load RAG vector store: {e}")
     else:
-        print("[WARN] chunks.json not found — RAG counselor will run without knowledge base.")
-
-    # Start keep-alive background task (prevents Render free tier from sleeping)
-    asyncio.create_task(_keep_alive_ping())
+        print("[WARN] No RAG vector store found. Run ingestion pipeline first.")
 
     yield
 
     # Shutdown
-    print("Shutting down Placidus AI Observatory...")
-
-
-async def _keep_alive_ping():
-    """Background task: ping own /health endpoint every 14 min to prevent Render sleep."""
-    from app.core.config import get_settings
-    settings = get_settings()
-    render_url = settings.RENDER_URL.rstrip("/")
-    interval_seconds = settings.KEEP_ALIVE_INTERVAL_MINUTES * 60
-
-    if not render_url:
-        print("[INFO] RENDER_URL not set — keep-alive ping disabled (not needed for local dev).")
-        return
-
-    import httpx
-    print(f"[OK] Keep-alive ping active — pinging {render_url}/health every {settings.KEEP_ALIVE_INTERVAL_MINUTES} min")
-    while True:
-        await asyncio.sleep(interval_seconds)
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get(f"{render_url}/health")
-                print(f"[PING] Keep-alive → {resp.status_code} (service awake)")
-        except Exception as ping_err:
-            print(f"[PING] Keep-alive failed: {ping_err}")
+    print("Shutting down AstroAI Platform...")
 
 
 app = FastAPI(
@@ -347,7 +303,8 @@ async def chat(request: ChatRequest):
     try:
         agent = AstrologyAgent(
             chart_data=request.chart_data,
-            rag_retriever=rag_retriever
+            rag_retriever=rag_retriever,
+            llm_client=get_llm_client()
         )
 
         response = agent.process(
