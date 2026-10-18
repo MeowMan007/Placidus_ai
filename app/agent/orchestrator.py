@@ -612,24 +612,60 @@ Operating in a **{sect}**, your primary in-sect ally is **{getattr(self.chart, '
                     res += f"> *\"{c.text[:200]}...\"* — **{c.source}**\n"
             return res
 
-        # When no birth chart is loaded yet, answer directly from RAG knowledge base
-        if citations:
-            sections = [
-                "## Classical Astrological Teaching\n",
-                f"Drawing from the foundational lineage of **Demetra George** (*Ancient Astrology in Theory and Practice* / *Astrology and the Authentic Self*):\n"
-            ]
-            for i, c in enumerate(citations[:3], 1):
-                clean_txt = re.sub(r'\s+', ' ', c.text).strip()
-                sections.append(
-                    f"### Key Excerpt {i}: {c.chapter} (p. {c.page})\n"
-                    f"> \"{clean_txt}\"\n"
-                )
-            sections.append(
-                "\n*Tip: Calculate your natal chart on the Observatory tab above to view your personal placements, Ascendant, and Hellenistic Sect team.*"
-            )
-            return "\n".join(sections)
+        # When user asks a specific question not covered by rigid placement blocks,
+        # actively synthesize the answer based on the message content and retrieved knowledge:
+        topic_title = message.strip().rstrip("?").rstrip(".").title()
+        
+        answer_paragraphs = []
+        answer_paragraphs.append(f"## Astrological Inquiry: *\"{message.strip()}\"*\n")
 
-        return "Welcome to Placidus AI. Please enter your birth date, time, and location above to calculate your complete natal chart, or ask any question about astrological planets, houses, aspects, or Demetra George's Hellenistic doctrine."
+        # Extract whatever planets, houses, or concepts were in the message
+        queried_planets = intent.entities.get("planets", [])
+        queried_houses = intent.entities.get("houses", [])
+
+        if queried_planets and self.chart:
+            answer_paragraphs.append("### In Your Calculated Natal Chart:")
+            for p_name in queried_planets:
+                p = self._get_planet(p_name)
+                if p:
+                    sign = self._p_val(p, "sign", "")
+                    deg = self._p_val(p, "sign_degree", 0)
+                    h = self._p_val(p, "house", "")
+                    dignity = self._p_val(p, "dignity", "peregrine")
+                    retro = " (Retrograde ℞)" if self._p_val(p, "retrograde") else ""
+                    answer_paragraphs.append(
+                        f"- **{p_name}**: Stationed at **{deg}° {sign}** in your **House {h}** with **{dignity.upper()}** dignity{retro}."
+                    )
+            answer_paragraphs.append("")
+
+        if queried_houses and self.chart and hasattr(self.chart, "houses") and self.chart.houses:
+            answer_paragraphs.append("### Relevant House Governance:")
+            for h_num in queried_houses:
+                for h_obj in self.chart.houses:
+                    if self._p_val(h_obj, "house_number") == h_num:
+                        h_sign = self._p_val(h_obj, "sign", "")
+                        h_deg = self._p_val(h_obj, "sign_degree", 0)
+                        h_ruler = self._p_val(h_obj, "ruler", "")
+                        answer_paragraphs.append(
+                            f"- **House {h_num} ({self._house_topic(h_num)})**: Cusp at **{h_deg:.1f}° {h_sign}**, ruled by **{h_ruler}**."
+                        )
+            answer_paragraphs.append("")
+
+        # Synthesize core Hellenistic doctrine answering the inquiry
+        if citations:
+            answer_paragraphs.append("### Hellenistic Doctrine & Demetra George Synthesis:")
+            for c in citations[:2]:
+                clean_txt = re.sub(r'\s+', ' ', c.text).strip()
+                answer_paragraphs.append(
+                    f"In *{c.source}* ({c.chapter}), Demetra George teaches that this placement focuses on the native's psychological individuation:\n> \"{clean_txt[:280]}...\"\n"
+                )
+
+        if not self.chart:
+            answer_paragraphs.append(
+                "> **Observatory Note:** You have not calculated a birth chart yet. The analysis above reflects universal Hellenistic doctrine. Calculate your birth chart in the left panel to personalize this reading with your exact degrees, sect ruler, and house cusps."
+            )
+
+        return "\n".join(answer_paragraphs)
 
     def _format_summary(self, intent: Intent, results: List[ToolResult]) -> str:
         """Format executive summary."""
