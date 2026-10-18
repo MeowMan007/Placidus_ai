@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI):
     chunks_path = os.path.join(vectorstore_path, "chunks.json")
     embedder_path = os.path.join(vectorstore_path, "embedder.pkl")
 
-    if os.path.exists(chunks_path) and os.path.exists(embedder_path):
+    if os.path.exists(chunks_path):
         try:
             from app.rag.ingest import DocumentIngestion, EmbeddingEngine, RAGRetriever
 
@@ -63,19 +63,37 @@ async def lifespan(app: FastAPI):
             ingest.load_chunks(chunks_path)
 
             embedder = EmbeddingEngine()
-            embedder.load(embedder_path)
+
+            # Try loading pre-built pkl first (fast path)
+            pkl_loaded = False
+            if os.path.exists(embedder_path):
+                try:
+                    embedder.load(embedder_path)
+                    pkl_loaded = True
+                    print(f"[OK] Loaded pre-built embedder ({len(ingest.chunks)} chunks)")
+                except Exception as pkl_err:
+                    print(f"[WARN] embedder.pkl version mismatch: {pkl_err}")
+                    print("[INFO] Rebuilding TF-IDF embedder from chunks.json...")
+
+            # Rebuild if pkl missing or incompatible (takes ~10s on free tier)
+            if not pkl_loaded:
+                print(f"[INFO] Building embedder from {len(ingest.chunks)} chunks...")
+                embedder.fit(ingest.chunks)
+                os.makedirs(vectorstore_path, exist_ok=True)
+                embedder.save(embedder_path)
+                print(f"[OK] Embedder built and cached at {embedder_path}")
 
             rag_retriever = RAGRetriever(ingest.chunks, embedder, top_k=5)
-            print(f"[OK] Loaded RAG vector store with {len(ingest.chunks)} chunks")
+            print(f"[OK] RAG knowledge base ready — {len(ingest.chunks)} chunks indexed")
         except Exception as e:
-            print(f"[WARN] Could not load RAG vector store: {e}")
+            print(f"[WARN] RAG initialisation failed: {e}")
     else:
-        print("[WARN] No RAG vector store found. Run ingestion pipeline first.")
+        print("[WARN] chunks.json not found — RAG counselor will run without knowledge base.")
 
     yield
 
     # Shutdown
-    print("Shutting down AstroAI Platform...")
+    print("Shutting down Placidus AI Observatory...")
 
 
 app = FastAPI(
