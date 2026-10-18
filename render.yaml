@@ -9,4 +9,15 @@ services:
         value: data/vectorstore
       - key: PYTHONUNBUFFERED
         value: "1"
+      - key: LLM_PROVIDER
+        value: huggingface
+      - key: HUGGINGFACE_MODEL
+        value: mistralai/Mistral-7B-Instruct-v0.2
+      - key: KEEP_ALIVE_INTERVAL_MINUTES
+        value: "14"
+      # Set these in the Render dashboard (do NOT commit real keys to git):
+      # - key: HUGGINGFACE_API_KEY
+      #   value: hf_your_key_here
+      # - key: RENDER_URL
+      #   value: https://your-app-name.onrender.com
     autoDeploy: true

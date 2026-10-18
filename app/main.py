@@ -5,6 +5,7 @@ Production-ready API for Placidus natal chart generation and AI astrological ana
 import os
 import sys
 import uuid
+import asyncio
 from datetime import datetime
 from typing import Optional, List
 from contextlib import asynccontextmanager
@@ -90,10 +91,36 @@ async def lifespan(app: FastAPI):
     else:
         print("[WARN] chunks.json not found — RAG counselor will run without knowledge base.")
 
+    # Start keep-alive background task (prevents Render free tier from sleeping)
+    asyncio.create_task(_keep_alive_ping())
+
     yield
 
     # Shutdown
     print("Shutting down Placidus AI Observatory...")
+
+
+async def _keep_alive_ping():
+    """Background task: ping own /health endpoint every 14 min to prevent Render sleep."""
+    from app.core.config import get_settings
+    settings = get_settings()
+    render_url = settings.RENDER_URL.rstrip("/")
+    interval_seconds = settings.KEEP_ALIVE_INTERVAL_MINUTES * 60
+
+    if not render_url:
+        print("[INFO] RENDER_URL not set — keep-alive ping disabled (not needed for local dev).")
+        return
+
+    import httpx
+    print(f"[OK] Keep-alive ping active — pinging {render_url}/health every {settings.KEEP_ALIVE_INTERVAL_MINUTES} min")
+    while True:
+        await asyncio.sleep(interval_seconds)
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.get(f"{render_url}/health")
+                print(f"[PING] Keep-alive → {resp.status_code} (service awake)")
+        except Exception as ping_err:
+            print(f"[PING] Keep-alive failed: {ping_err}")
 
 
 app = FastAPI(
