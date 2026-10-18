@@ -232,6 +232,8 @@ class AstrologyAgent:
                  rag_retriever=None,
                  llm_client=None):
         if isinstance(chart_data, dict):
+            if "chartData" in chart_data and isinstance(chart_data["chartData"], dict):
+                chart_data = chart_data["chartData"]
             try:
                 self.chart = ChartResponse(**chart_data)
             except Exception:
@@ -438,7 +440,18 @@ INSTRUCTIONS:
                     import logging
                     logging.getLogger("astroai").warning(f"Live LLM call error: {e}. Switching to native synthesis.")
 
-        # 2. Astrological Synthesis Engine
+        # 2. Standalone Classical Astrological Delineation Engine
+        try:
+            from app.services.classical_delineator import ClassicalDelineator
+            delineator = ClassicalDelineator(chart=self.chart, rag_retriever=self.rag)
+            res = delineator.delineate(message)
+            if res and len(res.strip()) > 50:
+                return res.strip()
+        except Exception as e:
+            import logging
+            logging.getLogger("astroai").warning(f"Classical delineator error: {e}")
+
+        # 3. Fallback Synthesis Engine
         return self._astrological_synthesis(message, intent, tool_results, citations, mode)
 
     def _astrological_synthesis(self, message: str, intent: Intent, 
