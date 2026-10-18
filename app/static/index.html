@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Placidus AI — Hellenistic Natal Chart Observatory</title>
+  <meta name="description" content="High-precision Placidus birth chart engine & classical Hellenistic astrological counselor based on Demetra George's Authentic Self framework.">
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+</head>
+<body>
+
+  <!-- Background celestial starfield canvas -->
+  <canvas id="starfield-canvas" aria-hidden="true"></canvas>
+
+  <!-- Navigation Bar -->
+  <header>
+    <nav class="navbar">
+      <a href="#" class="brand" onclick="showCalculationScreen(); return false;">
+        <div class="brand-sigil">✦</div>
+        <span class="brand-name">PLACIDUS AI</span>
+        <span class="brand-tag">Astrological Observatory</span>
+      </a>
+
+      <div class="nav-actions">
+        <div id="active-chart-badge" class="badge-active-chart" style="display: none;">
+          <span class="pulse-indicator"></span>
+          <span id="active-location-name">Selected Chart</span>
+        </div>
+        <button id="btn-edit-details" class="btn-header" onclick="showCalculationScreen()" style="display: none;">
+          Edit Birth Details
+        </button>
+      </div>
+    </nav>
+  </header>
+
+  <main>
+    <!-- ═══════════════════════════════════════════════════════════════════════
+         SCREEN 1 — CALCULATION DESK (BIRTH DATA ENTRY & AUTO-DETECTION)
+         ═══════════════════════════════════════════════════════════════════════ -->
+    <section id="screen-calculation" class="screen-calc">
+      <div class="desk-header">
+        <span class="monograph-label">Classical Hellenistic Ephemeris & Synthesis</span>
+        <h1 class="desk-title">Calculate Your Celestial Blueprint</h1>
+        <p class="desk-desc">
+          Precise Placidus house quadrant division, traditional essential dignities, and Hellenistic sect analysis grounded in Demetra George's authentic self framework.
+        </p>
+      </div>
+
+      <div class="card-panel">
+        <!-- Quick Historical Presets -->
+        <div class="presets-strip">
+          <span class="preset-title">Sample Charts:</span>
+          <button type="button" class="preset-chip" onclick="loadPreset('carl_jung')">Carl Jung</button>
+          <button type="button" class="preset-chip" onclick="loadPreset('marie_curie')">Marie Curie</button>
+          <button type="button" class="preset-chip" onclick="loadPreset('leonardo')">Leonardo da Vinci</button>
+          <button type="button" class="preset-chip" onclick="loadPreset('delhi_now')">Current Sky (Now)</button>
+        </div>
+
+        <form id="birth-form" class="form-grid">
+          <!-- Person Name -->
+          <div class="field-group full-col">
+            <label class="field-label" for="input-name">
+              <span>Full Name or Subject</span>
+              <span class="field-hint">Optional</span>
+            </label>
+            <input type="text" id="input-name" class="input-field" placeholder="e.g. Jane Doe" value="Jane Doe">
+          </div>
+
+          <!-- Location Search (Automatic Detection of Land / Coordinates) -->
+          <div class="field-group full-col">
+            <label class="field-label" for="city-search">
+              <span>Birth Location (City / Region)</span>
+              <span id="location-status" class="field-hint">Auto-detects coordinates & timezone</span>
+            </label>
+            <input type="text" id="city-search" class="input-field" placeholder="Type city name (e.g. London, Delhi, Tokyo, New York)..." autocomplete="off" required>
+            <div id="city-dropdown" class="autocomplete-dropdown"></div>
+
+            <input type="hidden" id="geo-lat" value="28.6139">
+            <input type="hidden" id="geo-lon" value="77.2090">
+          </div>
+
+          <!-- Date of Birth -->
+          <div class="field-group">
+            <label class="field-label" for="input-date">
+              <span>Date of Birth</span>
+            </label>
+            <input type="date" id="input-date" class="input-field" required>
+          </div>
+
+          <!-- Time of Birth -->
+          <div class="field-group">
+            <label class="field-label" for="input-time">
+              <span>Time of Birth</span>
+              <span class="field-hint">24-hour local time</span>
+            </label>
+            <input type="time" id="input-time" class="input-field" value="12:00" required>
+          </div>
+
+          <!-- Timezone Offset (Auto detected from coordinates) -->
+          <div class="field-group full-col">
+            <label class="field-label" for="select-timezone">
+              <span>Timezone (UTC Offset)</span>
+              <span id="timezone-status" class="field-hint">Auto-selected from location</span>
+            </label>
+            <select id="select-timezone" class="select-field">
+              <option value="-12">UTC−12:00</option>
+              <option value="-11">UTC−11:00 (Samoa)</option>
+              <option value="-10">UTC−10:00 (Hawaii)</option>
+              <option value="-9">UTC−09:00 (Alaska)</option>
+              <option value="-8">UTC−08:00 (Pacific Time - US/Canada)</option>
+              <option value="-7">UTC−07:00 (Mountain Time - US/Canada)</option>
+              <option value="-6">UTC−06:00 (Central Time - US/Canada)</option>
+              <option value="-5">UTC−05:00 (Eastern Time - US/Canada)</option>
+              <option value="-4">UTC−04:00 (Atlantic Time)</option>
+              <option value="-3.5">UTC−03:30 (Newfoundland)</option>
+              <option value="-3">UTC−03:00 (Brazil / Argentina)</option>
+              <option value="-2">UTC−02:00</option>
+              <option value="-1">UTC−01:00 (Azores)</option>
+              <option value="0">UTC±00:00 (London / GMT / Western Europe)</option>
+              <option value="1">UTC+01:00 (Central Europe / Paris / Berlin)</option>
+              <option value="2">UTC+02:00 (Eastern Europe / Athens / Cairo)</option>
+              <option value="3">UTC+03:00 (Moscow / Arabia / Istanbul)</option>
+              <option value="3.5">UTC+03:30 (Tehran)</option>
+              <option value="4">UTC+04:00 (Gulf / Dubai)</option>
+              <option value="4.5">UTC+04:30 (Kabul)</option>
+              <option value="5">UTC+05:00 (Pakistan / Karachi)</option>
+              <option value="5.5">UTC+05:30 (India Standard Time - IST)</option>
+              <option value="5.75">UTC+05:45 (Nepal)</option>
+              <option value="6">UTC+06:00 (Bangladesh / Dhaka)</option>
+              <option value="6.5">UTC+06:30 (Myanmar)</option>
+              <option value="7">UTC+07:00 (Bangkok / Jakarta)</option>
+              <option value="8">UTC+08:00 (Singapore / Beijing / Perth)</option>
+              <option value="9">UTC+09:00 (Tokyo / Seoul)</option>
+              <option value="9.5">UTC+09:30 (Adelaide / Darwin)</option>
+              <option value="10">UTC+10:00 (Sydney / Melbourne / Brisbane)</option>
+              <option value="11">UTC+11:00 (Solomon Islands)</option>
+              <option value="12">UTC+12:00 (Auckland / Fiji)</option>
+              <option value="13">UTC+13:00 (Tonga)</option>
+            </select>
+          </div>
+
+          <!-- Submit Button -->
+          <button type="submit" id="btn-submit" class="btn-calculate">
+            <span class="btn-icon">⚡</span>
+            <span>Compute Placidus Chart</span>
+          </button>
+        </form>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════════════════
+         SCREEN 2 — OBSERVATORY WORKSPACE (DUAL-COLUMN WORKSTATION)
+         ═══════════════════════════════════════════════════════════════════════ -->
+    <section id="screen-workspace" class="screen-workspace">
+
+      <!-- Top Hellenistic Archetype & Sect Banner -->
+      <div class="sect-banner">
+        <div class="sect-item">
+          <span class="sect-label">Hellenistic Sect</span>
+          <span id="banner-sect" class="sect-value accent">Diurnal (Day Chart)</span>
+        </div>
+        <div class="sect-item">
+          <span class="sect-label">Lord of the Chart (Ascendant Ruler)</span>
+          <span id="banner-ruler" class="sect-value">Sun</span>
+        </div>
+        <div class="sect-item">
+          <span class="sect-label">Benefic of Sect (Constructive)</span>
+          <span id="banner-benefic" class="sect-value">Jupiter</span>
+        </div>
+        <div class="sect-item">
+          <span class="sect-label">Malefic Contrary to Sect (Greatest Challenge)</span>
+          <span id="banner-malefic" class="sect-value">Mars</span>
+        </div>
+        <div class="sect-item">
+          <span class="sect-label">Lot of Fortune</span>
+          <span id="banner-fortune" class="sect-value">0° Aries</span>
+        </div>
+      </div>
+
+      <!-- LEFT COLUMN: Chart Wheel & Tables -->
+      <div class="workspace-left">
+
+        <!-- SVG Placidus Wheel Card -->
+        <div class="wheel-card">
+          <div class="card-titlebar">
+            <div class="card-heading">
+              <span>◉</span>
+              <span>Placidus Chart Wheel</span>
+            </div>
+            <span id="wheel-meta-sub" class="field-hint">Ascendant at 9-o'clock (180°)</span>
+          </div>
+
+          <div class="svg-wheel-wrapper">
+            <svg id="chart-wheel-svg" viewBox="0 0 600 600" aria-label="Placidus Natal Chart Wheel"></svg>
+          </div>
+        </div>
+
+        <!-- Ephemeris Data Tables -->
+        <div class="tables-card">
+          <div class="tab-nav">
+            <button class="tab-btn active" onclick="switchDataTab('planets')">Planets & Dignities</button>
+            <button class="tab-btn" onclick="switchDataTab('houses')">Placidus Houses</button>
+            <button class="tab-btn" onclick="switchDataTab('matrix')">Aspect Matrix</button>
+            <button class="tab-btn" onclick="switchDataTab('balance')">Elements & Modalities</button>
+          </div>
+
+          <!-- Tab 1: Planets Table -->
+          <div id="tab-pane-planets" class="table-scroll">
+            <table class="astro-table">
+              <thead>
+                <tr>
+                  <th>Body</th>
+                  <th>Position</th>
+                  <th>House</th>
+                  <th>Motion</th>
+                  <th>Dignity</th>
+                  <th>Element</th>
+                  <th>Nakshatra</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-planets"></tbody>
+            </table>
+          </div>
+
+          <!-- Tab 2: Houses Table -->
+          <div id="tab-pane-houses" class="table-scroll" style="display: none;">
+            <table class="astro-table">
+              <thead>
+                <tr>
+                  <th>House Cusp</th>
+                  <th>Zodiac Sign</th>
+                  <th>Exact Longitude</th>
+                  <th>Traditional House Ruler</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-houses"></tbody>
+            </table>
+          </div>
+
+          <!-- Tab 3: Aspect Matrix -->
+          <div id="tab-pane-matrix" class="table-scroll" style="display: none;">
+            <div class="matrix-wrapper" style="overflow-x: auto; padding: 0.5rem 0;">
+              <table id="matrix-table" class="matrix-grid"></table>
+            </div>
+          </div>
+
+          <!-- Tab 4: Elemental Balance -->
+          <div id="tab-pane-balance" class="table-scroll" style="display: none;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; padding: 0.5rem;">
+              <div>
+                <h4 style="font-size: 0.82rem; text-transform: uppercase; color: var(--brass-mid); margin-bottom: 0.8rem; font-family: var(--font-mono);">
+                  Elemental Distribution
+                </h4>
+                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                  <div style="display: flex; justify-content: space-between; padding: 0.45rem 0.75rem; background: var(--fire-fill); border-radius: 4px; color: var(--fire-text);">
+                    <span>🜂 Fire (Aries, Leo, Sagittarius)</span>
+                    <strong id="balance-fire">0</strong>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; padding: 0.45rem 0.75rem; background: var(--earth-fill); border-radius: 4px; color: var(--earth-text);">
+                    <span>🜃 Earth (Taurus, Virgo, Capricorn)</span>
+                    <strong id="balance-earth">0</strong>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; padding: 0.45rem 0.75rem; background: var(--air-fill); border-radius: 4px; color: var(--air-text);">
+                    <span>🜁 Air (Gemini, Libra, Aquarius)</span>
+                    <strong id="balance-air">0</strong>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; padding: 0.45rem 0.75rem; background: var(--water-fill); border-radius: 4px; color: var(--water-text);">
+                    <span>🜄 Water (Cancer, Scorpio, Pisces)</span>
+                    <strong id="balance-water">0</strong>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h4 style="font-size: 0.82rem; text-transform: uppercase; color: var(--brass-mid); margin-bottom: 0.8rem; font-family: var(--font-mono);">
+                  Modality Distribution
+                </h4>
+                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                  <div style="display: flex; justify-content: space-between; padding: 0.45rem 0.75rem; background: var(--bg-surface); border: 1px solid var(--border-hairline); border-radius: 4px;">
+                    <span>Cardinal (Initiating)</span>
+                    <strong id="balance-cardinal">0</strong>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; padding: 0.45rem 0.75rem; background: var(--bg-surface); border: 1px solid var(--border-hairline); border-radius: 4px;">
+                    <span>Fixed (Stabilizing)</span>
+                    <strong id="balance-fixed">0</strong>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; padding: 0.45rem 0.75rem; background: var(--bg-surface); border: 1px solid var(--border-hairline); border-radius: 4px;">
+                    <span>Mutable (Adapting)</span>
+                    <strong id="balance-mutable">0</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT COLUMN: Astrological Counselor & Knowledge Engine -->
+      <div class="workspace-right">
+        <div class="counselor-card">
+          <div class="counselor-header">
+            <h2 class="counselor-title">
+              <span>✦</span>
+              <span>Authentic Self Astrological Counselor</span>
+            </h2>
+            <p class="counselor-sub">Classical Hellenistic Interpretation · Demetra George Knowledge System</p>
+          </div>
+
+          <!-- Quick Inquiry Chips -->
+          <div class="inquiry-strip">
+            <span class="inquiry-label">Foundational Hellenistic Inquiries:</span>
+            <div class="inquiry-chips-grid">
+              <button class="inquiry-btn" onclick="askCounselorPreset('Who is my Lord of the Chart and what is my primary life direction?')">
+                <span class="inquiry-icon">♛</span>
+                <span>Ascendant Ruler</span>
+              </button>
+              <button class="inquiry-btn" onclick="askCounselorPreset('Explain my chart sect and identify my benefic and malefic allies.')">
+                <span class="inquiry-icon">⚖</span>
+                <span>Sect & Planetary Allies</span>
+              </button>
+              <button class="inquiry-btn" onclick="askCounselorPreset('How do my Sun and Moon integrate to reveal my soul purpose?')">
+                <span class="inquiry-icon">☉</span>
+                <span>Sun & Moon Purpose</span>
+              </button>
+              <button class="inquiry-btn" onclick="askCounselorPreset('What do my North Node and South Node reveal about my evolutionary trajectory?')">
+                <span class="inquiry-icon">☊</span>
+                <span>Lunar Nodes Matrix</span>
+              </button>
+              <button class="inquiry-btn" onclick="askCounselorPreset('What indicators in my chart signify my vocational dharma and actions in the world?')">
+                <span class="inquiry-icon">⚝</span>
+                <span>Vocation & Midheaven</span>
+              </button>
+              <button class="inquiry-btn" onclick="askCounselorPreset('What does the Lot of Fortune indicate about my physical flourishing and luck?')">
+                <span class="inquiry-icon">⊗</span>
+                <span>Lot of Fortune</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Chat Messages Container -->
+          <div id="chat-stream" class="chat-conversation">
+            <div class="chat-bubble assistant">
+              <h3 style="font-family: var(--font-serif); font-size: 1.05rem; color: var(--brass-pale); margin-bottom: 0.4rem;">
+                Observatory Ready
+              </h3>
+              <p>
+                Your natal chart has been computed according to the Placidus quadrant system. Select any classical inquiry above or formulate your own question regarding specific placements, dignities, or aspects.
+              </p>
+            </div>
+          </div>
+
+          <!-- Chat Input -->
+          <form id="chat-form" class="chat-input-box" onsubmit="handleChatSubmit(event)">
+            <input type="text" id="chat-input" class="chat-input" placeholder="Inquire about placements, dignities, or aspects..." autocomplete="off">
+            <button type="submit" id="btn-chat-send" class="btn-send">Inquire</button>
+          </form>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
